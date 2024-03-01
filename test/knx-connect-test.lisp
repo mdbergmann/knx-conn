@@ -157,16 +157,22 @@
 ;; disconnect request/response
 ;; --------------------------------------
 
+(defparameter *disconnect-response-data-ok*
+  #(6 16 2 10 0 8 0 0))
+
 (test disconnect--ok
   (with-mocks ()
     (answer usocket:socket-send t)
+    (answer usocket:socket-receive *disconnect-response-data-ok*)
 
     (let ((knxc::*channel-id* 0))
       (multiple-value-bind (response err)
           (close-tunnel-connection)
         (is (eq nil err))
         (is (typep response 'knx-disconnect-response)))
-      (is (eql 1 (length (invocations 'usocket:socket-send)))))))
+      
+      (is (eql 1 (length (invocations 'usocket:socket-send))))
+      (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
 ;; --------------------------------------
 ;; tunneling request receival

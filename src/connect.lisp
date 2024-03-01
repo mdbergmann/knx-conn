@@ -11,17 +11,22 @@
            #:+connect-status-err-conn-type+
            #:make-disconnect-request
            #:knx-disconnect-request
+           #:knx-disconnect-response
            ))
 
 
 (in-package :knx-conn.connect)
 
-(defconstant +knx-connect-request+ #x0205)
-(defconstant +knx-connect-response+ #x0206)
+(defconstant +connect-status-no-error+ #x00)
+(defconstant +connect-status-err-conn-type+ #x22)
+(defconstant +connect-status-err-conn-option+ #x23)
+(defconstant +connect-status-err-no-more-conns+ #x24)
 
 ;; -----------------------------
 ;; knx connect request
 ;; -----------------------------
+
+(defconstant +knx-connect-request+ #x0205)
 
 (defstruct (knx-connect-request (:include knx-package)
                                 (:constructor %make-connect-request)
@@ -64,13 +69,10 @@ KNXnet/IP body
                (to-byte-seq (connect-request-cri obj))))
 
 ;; -----------------------------
-;; knx description response
+;; knx connect response
 ;; -----------------------------
 
-(defconstant +connect-status-no-error+ #x00)
-(defconstant +connect-status-err-conn-type+ #x22)
-(defconstant +connect-status-err-conn-option+ #x23)
-(defconstant +connect-status-err-no-more-conns+ #x24)
+(defconstant +knx-connect-response+ #x0206)
 
 (defstruct (knx-connect-response (:include knx-package)
                                  (:constructor %make-connect-response)
@@ -152,3 +154,37 @@ KNXnet/IP body
                (call-next-method obj)
                (vector (disconnect-request-channel-id obj) 0)
                (to-byte-seq (disconnect-request-hpai obj))))
+
+;; -----------------------------
+;; knx disconnect request
+;; -----------------------------
+
+(defconstant +knx-disconnect-response+ #x020a)
+
+(defstruct (knx-disconnect-response (:include knx-package)
+                                    (:constructor %%make-disconnect-response)
+                                    (:conc-name disconnect-response-))
+  "KNXnet/IP header (see above)
+
+KNXnet/IP body
++-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+| Communication Channel ID    | Status                          |
+|                             |                                 |
++---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+"
+  (channel-id (error "channel-id required!") :type octet)
+  (status (error "status required!") :type octet))
+
+(defun %make-disconnect-response (channel-id status)
+  (%%make-disconnect-response
+   :header (make-header +knx-disconnect-response+
+                        (+ 6 2))
+   :channel-id channel-id
+   :status status))
+
+(defmethod parse-to-obj ((obj-type (eql +knx-disconnect-response+)) header body)
+  (let ((channel-id (elt body 0))
+        (status (elt body 1)))
+    (%%make-disconnect-response
+     :header header
+     :channel-id channel-id
+     :status status)))

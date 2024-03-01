@@ -27,4 +27,12 @@
     (is (= (length bytes) 16))
     ))
 
+(test parse-disconnect-response
+  (let ((resp (parse-to-obj connect::+knx-disconnect-response+
+                            (make-header connect::+knx-disconnect-response+ 2)
+                            #(0 0))))
+    (is (typep resp 'knx-disconnect-response))
+    (is (= (connect::disconnect-response-channel-id resp) 0))
+    (is (= (connect::disconnect-response-status resp) 0))))
+
 (run! 'connect-tests)
