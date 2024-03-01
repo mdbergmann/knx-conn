@@ -6,10 +6,11 @@
            ;; send requests
            #:retrieve-descr-info
            #:establish-tunnel-connection
+           #:close-tunnel-connection
            #:send-write-request
            #:send-read-request
            ;; receive data
-           #:receive-knx-request
+           #:receive-knx-data
            ))
 
 (in-package :knx-conn.knx-connect)
@@ -61,6 +62,8 @@
 ;; high-level comm
 ;; -----------------------------
 
+(defvar *channel-id* nil)
+
 (defmacro %with-request-response (request)
   `(progn
      (send-knx-data ,request)
@@ -71,6 +74,9 @@
   
 (defun establish-tunnel-connection ()
   (%with-request-response (make-connect-request)))
+
+(defun close-tunnel-connection ()
+  (%with-request-response (make-disconnect-request *channel-id*)))
 
 ;; ---------------------------------
 

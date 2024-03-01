@@ -48,9 +48,9 @@ TODOs:
 
 OK - separate 'write' request, without waiting for response
 OK - separate 'read' request, 'read' will get a result asynchonously.
-=> - move to separate project
+OK - move to separate project
+=> - implement disconnect
 - do something with channel-id and seq-counter
-- implement disconnect
 - more dpt types
 - dpt1, more on/off options like (t / nil)
 - default cemi tests

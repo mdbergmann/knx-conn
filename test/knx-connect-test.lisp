@@ -105,7 +105,7 @@
     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
 
-(test connect-ok
+(test connect--ok
   (with-mocks ()
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *connect-response-data-ok*)
@@ -136,7 +136,7 @@
     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
   "Connect response with error status")
 
-(test connect-err
+(test connect--err
   (with-mocks ()
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *connect-response-data-err*)
@@ -154,6 +154,21 @@
 
 
 ;; --------------------------------------
+;; disconnect request/response
+;; --------------------------------------
+
+(test disconnect--ok
+  (with-mocks ()
+    (answer usocket:socket-send t)
+
+    (let ((knxc::*channel-id* 0))
+      (multiple-value-bind (response err)
+          (close-tunnel-connection)
+        (is (eq nil err))
+        (is (typep response 'knx-disconnect-response)))
+      (is (eql 1 (length (invocations 'usocket:socket-send)))))))
+
+;; --------------------------------------
 ;; tunneling request receival
 ;; --------------------------------------
 
@@ -165,7 +180,7 @@
     (answer usocket:socket-receive *raw-tunnelling-request-data*)
 
     (multiple-value-bind (request err)
-        (receive-knx-request)
+        (receive-knx-data)
       (declare (ignore err))
       (is (not (null request)))
       (is (typep request 'knx-tunnelling-request)))

@@ -9,6 +9,8 @@
            #:connect-response-crd
            #:+connect-status-no-error+
            #:+connect-status-err-conn-type+
+           #:make-disconnect-request
+           #:knx-disconnect-request
            ))
 
 
@@ -115,3 +117,38 @@ KNXnet/IP body
                        (connect-response-status obj))
                (to-byte-seq (connect-response-hpai obj))
                (to-byte-seq (connect-response-crd obj))))
+
+;; -----------------------------
+;; knx disconnect request
+;; -----------------------------
+
+(defconstant +knx-disconnect-request+ #x0209)
+
+(defstruct (knx-disconnect-request (:include knx-package)
+                                   (:constructor %make-disconnect-request)
+                                   (:conc-name disconnect-request-))
+  "KNXnet/IP header (see above)
+
+KNXnet/IP body
++-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+| Communication Channel ID    | reserved                        |
+|                             |                                 |
++-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+| HPAI                                                          |
+| Control endpoint                                              |
++---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+"
+  (channel-id (error "channel-id required!") :type octet)
+  (hpai *hpai-unbound-addr* :type hpai))
+
+(defun make-disconnect-request (channel-id)
+  (%make-disconnect-request
+   :header (make-header +knx-disconnect-request+
+                        (+ (hpai-len *hpai-unbound-addr*) 2))
+   :channel-id channel-id
+   :hpai *hpai-unbound-addr*))
+
+(defmethod to-byte-seq ((obj knx-disconnect-request))
+  (concatenate 'vector
+               (call-next-method obj)
+               (vector (disconnect-request-channel-id obj) 0)
+               (to-byte-seq (disconnect-request-hpai obj))))
