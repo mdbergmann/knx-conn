@@ -1,5 +1,6 @@
 (defpackage :knx-conn.knx-connect
-  (:use :cl :knxutil :knxobj :descr-info :connect :tunnelling :hpai :cemi)
+  (:use :cl :knxutil :knxobj :descr-info :connect :tunnelling
+        :hpai :cemi :address :dpt)
   (:nicknames :knxc)
   (:export #:connect
            #:disconnect
@@ -79,9 +80,13 @@
   (%with-request-response (make-disconnect-request *channel-id*)))
 
 ;; ---------------------------------
+;; with opened tunnelling connection
+;; ---------------------------------
 
 (defun send-write-request (group-address dpt)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set."
+  (check-type group-address knx-group-address)
+  (check-type dpt dpt)
   (send-knx-data
    (make-tunnelling-request
     :channel-id 0
@@ -94,6 +99,7 @@
 
 (defun send-read-request (group-address)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously."
+  (check-type group-address knx-group-address)
   (send-knx-data
    (make-tunnelling-request
     :channel-id 0
