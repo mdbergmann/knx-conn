@@ -231,21 +231,54 @@
 ;; tunneling request sending
 ;; --------------------------------------
 
-;; switch value on group address
+;; reset this
+(setf knxc::*channel-id* nil)
+(setf knxc::*seq-counter* 0)
 
 (test send-write-request--switch-on
   (with-mocks ()
     (answer usocket:socket-send t)
     (let ((knxc::*channel-id* 78))
-      (send-write-request (make-group-address "0/4/10")
-                          (make-dpt1 :switch :on)))
+      (let ((req (send-write-request (make-group-address "0/4/10")
+                                     (make-dpt1 :switch :on))))
+        (is (= 78 (conn-header-channel-id
+                   (tunnelling-request-conn-header req))))))
     (is (= 1 (length (invocations 'usocket:socket-send))))))
-  
+
+(test send-write-request--increment-seq-counter
+  (with-mocks ()
+    (answer usocket:socket-send t)
+    (let ((knxc::*channel-id* 78)
+          (knxc::*seq-counter* 0))
+      (let ((req (send-write-request (make-group-address "0/4/10")
+                                     (make-dpt1 :switch :on))))
+        (is (= 1 (conn-header-seq-counter
+                  (tunnelling-request-conn-header req)))))
+      (is (= 1 knxc::*seq-counter*)))
+    (is (= 1 (length (invocations 'usocket:socket-send))))))
+
+(test send-write-request--seq-counter-rollover
+  (with-mocks ()
+    (answer usocket:socket-send t)
+    (let ((knxc::*channel-id* 78)
+          (knxc::*seq-counter* 254))
+      (let ((req (send-write-request (make-group-address "0/4/10")
+                                     (make-dpt1 :switch :on))))
+        (is (= 0 (conn-header-seq-counter
+                  (tunnelling-request-conn-header req)))))
+      (is (= 0 knxc::*seq-counter*)))
+    (is (= 1 (length (invocations 'usocket:socket-send))))))
+
 (test send-read-request
   (with-mocks ()
     (answer usocket:socket-send t)
-    (let ((knxc::*channel-id* 78))
-      (send-read-request (make-group-address "0/4/10")))
+    (let ((knxc::*channel-id* 78)
+          (knxc::*seq-counter* 79))
+      (let ((req (send-read-request (make-group-address "0/4/10"))))
+        (is (= 78 (conn-header-channel-id
+                   (tunnelling-request-conn-header req))))
+        (is (= 80 (conn-header-seq-counter
+                   (tunnelling-request-conn-header req))))))
     (is (= 1 (length (invocations 'usocket:socket-send))))))
 
 (run! 'knx-connect-tests)

@@ -19,6 +19,7 @@
 (defparameter *knx-if* "192.168.50.41")
 
 (defvar *conn* nil)
+
 (defun connect (address &optional (port 3761))
   "Connect to the KNXnet/IP gateway at the given `address` and `port`."
   (let ((conn (usocket:socket-connect
@@ -40,7 +41,8 @@
   (log:debug "Sending obj: ~a" request)
   (let ((req-bytes (to-byte-seq request)))
     (log:debug "Sending bytes: ~a" req-bytes)
-    (usocket:socket-send *conn* req-bytes (length req-bytes))))
+    (usocket:socket-send *conn* req-bytes (length req-bytes)))
+  request)
 
 (defun receive-knx-data ()
   "Receive a KNXnet/IP request from the KNXnet/IP gateway."
@@ -66,9 +68,15 @@
 (defvar *channel-id* nil
   "The channel-id of the current tunnelling connection.")
 
-(defun assert-channel-id ()
+(defun %assert-channel-id ()
   (assert (and (integerp *channel-id*) (> *channel-id* 0))
           nil "No open connection!"))
+
+(defvar *seq-counter* 0
+  "The sequence counter for the current tunnelling connection.")
+
+(defun %next-seq-counter ()
+  (setf *seq-counter* (mod (1+ *seq-counter*) 255)))
 
 (defmacro %with-request-response (request)
   `(progn
@@ -87,7 +95,7 @@
     (values response err)))
 
 (defun close-tunnel-connection ()
-  (assert-channel-id)
+  (%assert-channel-id)
   (%with-request-response (make-disconnect-request *channel-id*)))
 
 ;; ---------------------------------
@@ -98,11 +106,11 @@
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set."
   (check-type group-address knx-group-address)
   (check-type dpt dpt)
-  (assert-channel-id)
+  (%assert-channel-id)
   (send-knx-data
    (make-tunnelling-request
-    :channel-id 0
-    :seq-counter 0
+    :channel-id *channel-id*
+    :seq-counter (%next-seq-counter)
     :cemi (make-default-cemi
            :message-code +cemi-mc-l_data.req+
            :dest-address group-address
@@ -112,11 +120,11 @@
 (defun send-read-request (group-address)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously."
   (check-type group-address knx-group-address)
-  (assert-channel-id)
+  (%assert-channel-id)
   (send-knx-data
    (make-tunnelling-request
-    :channel-id 0
-    :seq-counter 0
+    :channel-id *channel-id*
+    :seq-counter (%next-seq-counter)
     :cemi (make-default-cemi
            :message-code +cemi-mc-l_data.req+
            :dest-address group-address
