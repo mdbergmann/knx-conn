@@ -123,8 +123,19 @@
       (is (equal (address-string-rep
                   (crd:crd-individual-address
                    (connect-response-crd response)))
-                 "14.14.255"))
-      )
+                 "14.14.255")))
+    
+    (is (eql 1 (length (invocations 'usocket:socket-send))))
+    (is (eql 1 (length (invocations 'usocket:socket-receive))))))
+
+(test connect--ok--sets-channel-id
+  (with-mocks ()
+    (answer usocket:socket-send t)
+    (answer usocket:socket-receive *connect-response-data-ok*)
+
+    (let ((knxc::*channel-id* -1))
+      (establish-tunnel-connection)
+      (is (= knxc::*channel-id* 78)))
     
     (is (eql 1 (length (invocations 'usocket:socket-send))))
     (is (eql 1 (length (invocations 'usocket:socket-receive))))))

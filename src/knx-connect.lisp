@@ -74,7 +74,12 @@
   (%with-request-response (make-descr-request *hpai-unbound-addr*)))
   
 (defun establish-tunnel-connection ()
-  (%with-request-response (make-connect-request)))
+  (multiple-value-bind (response err)
+      (%with-request-response (make-connect-request))
+    (when response
+      (setf *channel-id*
+            (connect-response-channel-id response)))
+    (values response err)))
 
 (defun close-tunnel-connection ()
   (%with-request-response (make-disconnect-request *channel-id*)))
