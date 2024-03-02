@@ -63,7 +63,12 @@
 ;; high-level comm
 ;; -----------------------------
 
-(defvar *channel-id* nil)
+(defvar *channel-id* nil
+  "The channel-id of the current tunnelling connection.")
+
+(defun assert-channel-id ()
+  (assert (and (integerp *channel-id*) (> *channel-id* 0))
+          nil "No open connection!"))
 
 (defmacro %with-request-response (request)
   `(progn
@@ -82,6 +87,7 @@
     (values response err)))
 
 (defun close-tunnel-connection ()
+  (assert-channel-id)
   (%with-request-response (make-disconnect-request *channel-id*)))
 
 ;; ---------------------------------
@@ -92,6 +98,7 @@
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set."
   (check-type group-address knx-group-address)
   (check-type dpt dpt)
+  (assert-channel-id)
   (send-knx-data
    (make-tunnelling-request
     :channel-id 0
@@ -105,6 +112,7 @@
 (defun send-read-request (group-address)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously."
   (check-type group-address knx-group-address)
+  (assert-channel-id)
   (send-knx-data
    (make-tunnelling-request
     :channel-id 0

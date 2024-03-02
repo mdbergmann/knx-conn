@@ -110,23 +110,24 @@
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *connect-response-data-ok*)
 
-    (multiple-value-bind (response err)
-        (establish-tunnel-connection)
-      (is (eq nil err))
-      (is (typep response 'knx-connect-response))
-      ;; check knx-header
-      (let ((header (package-header response)))
-        (is (typep header 'knx-header)))
-      ;; check connect response body
-      (is (eql +connect-status-no-error+ (connect-response-status response)))
-      (is (eql 78 (connect-response-channel-id response)))
-      (is (equal (address-string-rep
-                  (crd:crd-individual-address
-                   (connect-response-crd response)))
-                 "14.14.255")))
+    (let ((knxc::*channel-id* 0))
+      (multiple-value-bind (response err)
+          (establish-tunnel-connection)
+        (is (eq nil err))
+        (is (typep response 'knx-connect-response))
+        ;; check knx-header
+        (let ((header (package-header response)))
+          (is (typep header 'knx-header)))
+        ;; check connect response body
+        (is (eql +connect-status-no-error+ (connect-response-status response)))
+        (is (eql 78 (connect-response-channel-id response)))
+        (is (equal (address-string-rep
+                    (crd:crd-individual-address
+                     (connect-response-crd response)))
+                   "14.14.255")))
     
-    (is (eql 1 (length (invocations 'usocket:socket-send))))
-    (is (eql 1 (length (invocations 'usocket:socket-receive))))))
+      (is (eql 1 (length (invocations 'usocket:socket-send))))
+      (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
 (test connect--ok--sets-channel-id
   (with-mocks ()
@@ -163,6 +164,17 @@
     (is (eql 1 (length (invocations 'usocket:socket-send))))
     (is (eql 1 (length (invocations 'usocket:socket-receive))))))
 
+(test connect--err--does-not-set-channel-id
+  (with-mocks ()
+    (answer usocket:socket-send t)
+    (answer usocket:socket-receive *connect-response-data-err*)
+
+    (let ((knxc::*channel-id* -1))
+      (establish-tunnel-connection)
+      (is (= knxc::*channel-id* -1)))
+    
+    (is (eql 1 (length (invocations 'usocket:socket-send))))
+    (is (eql 1 (length (invocations 'usocket:socket-receive))))))
 
 ;; --------------------------------------
 ;; disconnect request/response
@@ -176,14 +188,25 @@
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *disconnect-response-data-ok*)
 
-    (let ((knxc::*channel-id* 0))
+    (let ((knxc::*channel-id* 78))
       (multiple-value-bind (response err)
           (close-tunnel-connection)
         (is (eq nil err))
-        (is (typep response 'knx-disconnect-response)))
+        (is (typep response 'knx-disconnect-response))))
       
-      (is (eql 1 (length (invocations 'usocket:socket-send))))
-      (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
+    (is (eql 1 (length (invocations 'usocket:socket-send))))
+    (is (eql 1 (length (invocations 'usocket:socket-receive))))))
+
+(test disconnect--no-valid-channel-id
+  (with-mocks ()
+    (let ((knxc::*channel-id* nil))
+      (handler-case
+          (close-tunnel-connection)
+        (simple-error (c)
+          (is (equal (format nil "~a" c)
+                     "No open connection!"))))
+      (is (eql 0 (length (invocations 'usocket:socket-send))))
+      (is (eql 0 (length (invocations 'usocket:socket-receive)))))))
 
 ;; --------------------------------------
 ;; tunneling request receival
@@ -213,14 +236,16 @@
 (test send-write-request--switch-on
   (with-mocks ()
     (answer usocket:socket-send t)
-    (send-write-request (make-group-address "0/4/10")
-                       (make-dpt1 :switch :on))
+    (let ((knxc::*channel-id* 78))
+      (send-write-request (make-group-address "0/4/10")
+                          (make-dpt1 :switch :on)))
     (is (= 1 (length (invocations 'usocket:socket-send))))))
-
+  
 (test send-read-request
   (with-mocks ()
     (answer usocket:socket-send t)
-    (send-read-request (make-group-address "0/4/10"))
+    (let ((knxc::*channel-id* 78))
+      (send-read-request (make-group-address "0/4/10")))
     (is (= 1 (length (invocations 'usocket:socket-send))))))
 
 (run! 'knx-connect-tests)
