@@ -12,9 +12,26 @@
 (in-suite dpt-tests)
 
 (test create-dpt1-1.001
+  ;; on
   (let ((dpt (make-dpt1 :switch :on)))
+    (is (string= (dpt-value-type dpt) "1.001"))
     (is (= (dpt-raw-value dpt) 1))
     (is (eq (dpt-value dpt) :on))
-    (is (equalp #(1) (knxobj:to-byte-seq dpt)))))
+    (is (equalp #(1) (knxobj:to-byte-seq dpt))))
+  ;; off
+  (let ((dpt (make-dpt1 :switch :off)))
+    (is (= (dpt-raw-value dpt) 0))
+    (is (eq (dpt-value dpt) :off))
+    (is (equalp #(0) (knxobj:to-byte-seq dpt))))
+  ;; errors
+  (signals type-error (make-dpt1 :switch :unknown))
+  (signals type-error (make-dpt1 :unknown :on)))
+
+(test create-dpt9-9.001
+  (let ((dpt (make-dpt9 :temperature 23.5)))
+    (is (= (dpt-raw-value dpt) 235))
+    (is (= (dpt-value dpt) 23.5))
+    (is (equalp #(0 235) (knxobj:to-byte-seq dpt))))
+  )
 
 (run! 'dpt-tests)
