@@ -48,4 +48,4 @@
 (defun bit-vector-to-number (bit-vec)
   (let ((len (length bit-vec)))
     (loop :for i :from 0 :below len
-          :sum (ash (elt bit-vec i) (- (1- len) i)))))
+          :sum (ash (aref bit-vec i) (- (1- len) i)))))

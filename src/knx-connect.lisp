@@ -78,6 +78,8 @@
 (defun %next-seq-counter ()
   (setf *seq-counter* (mod (1+ *seq-counter*) 255)))
 
+;; ---------------------------------
+
 (defmacro %with-request-response (request)
   `(progn
      (send-knx-data ,request)

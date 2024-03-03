@@ -49,7 +49,7 @@ The ip-port is an integer between 0 and 65535."
   (make-hpai "0.0.0.0" 0))
 
 (defun parse-hpai (pkg-data)
-  (%make-hpai :host-protocol-code (elt pkg-data 1)
+  (%make-hpai :host-protocol-code (aref pkg-data 1)
               :ip-address (seq-to-array (subseq pkg-data 2 6) :len 4)
               :ip-port (seq-to-array (subseq pkg-data 6 8) :len 2)))
 

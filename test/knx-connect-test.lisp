@@ -7,7 +7,7 @@
 
 (def-suite knx-connect-tests
   :description "Tests for KNX connection handling"
-  );;:in projname.tests:test-suite)
+  :in knx-conn.tests:test-suite)
 
 (in-suite knx-connect-tests)
 

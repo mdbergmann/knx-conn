@@ -237,14 +237,14 @@ cEMI frame
 x... .... frame type
 0 = extended frame (9-263 octets)
 1 = standard frame (8-23 octets)"
-  (= 1 (elt (cemi-ctrl1 cemi) 0)))
+  (= 1 (aref (cemi-ctrl1 cemi) 0)))
 
 (defun %ctrl1-repeat-p (cemi)
   "Return T if CEMI is a repeat frame
 ..x. .... repeat
 0 = repeat on medium if error
 1 = do not repeat"
-  (= 0 (elt (cemi-ctrl1 cemi) 2)))
+  (= 0 (aref (cemi-ctrl1 cemi) 2)))
 
 (defun %ctrl1-broadcast-type (cemi)
   "Return the broadcast type of CEMI
@@ -252,9 +252,9 @@ x... .... frame type
 0 = system broadcast
 1 = normal broadcast"
   (cond
-    ((= 0 (elt (cemi-ctrl1 cemi) 3))
+    ((= 0 (aref (cemi-ctrl1 cemi) 3))
      +broadcast-type-system+)
-    ((= 1 (elt (cemi-ctrl1 cemi) 3))
+    ((= 1 (aref (cemi-ctrl1 cemi) 3))
      +broadcast-type-normal+)))
 
 (defun %ctrl1-priority (cemi)
@@ -262,13 +262,13 @@ x... .... frame type
 .... xx.. priority"
   (let ((ctrl1 (cemi-ctrl1 cemi)))
     (cond
-      ((and (elt ctrl1 4) (elt ctrl1 5))
+      ((and (aref ctrl1 4) (aref ctrl1 5))
        +priority-low+)
-      ((and (elt ctrl1 4) (not (elt ctrl1 5)))
+      ((and (aref ctrl1 4) (not (aref ctrl1 5)))
        +priority-urgent+)
-      ((and (not (elt ctrl1 4)) (elt ctrl1 5))
+      ((and (not (aref ctrl1 4)) (aref ctrl1 5))
        +priority-normal+)
-      ((and (not (elt ctrl1 4)) (not (elt ctrl1 5)))
+      ((and (not (aref ctrl1 4)) (not (aref ctrl1 5)))
        +priority-system+))))
 
 (defun %ctrl1-ack-p (cemi)
@@ -276,14 +276,14 @@ x... .... frame type
 .... ..x. acknowledge request flag
 0 = no ACK requested
 1 = ACK requested"
-  (= 1 (elt (cemi-ctrl1 cemi) 6)))
+  (= 1 (aref (cemi-ctrl1 cemi) 6)))
 
 (defun %ctrl1-error-confirm-p (cemi)
   "Return T if CEMI is an error confirmation
 .... ...x confirmation flag
 0 = no error (confirm)
 1 = error (L-Data.Connection)"
-  (= 1 (elt (cemi-ctrl1 cemi) 7)))
+  (= 1 (aref (cemi-ctrl1 cemi) 7)))
 
 ;; --------------------------
 ;; control octet 2
@@ -304,7 +304,7 @@ x... .... frame type
 x... .... destination address type
 0 = individual address
 1 = group address"
-  (if (= 1 (elt (cemi-ctrl2 cemi) 0))
+  (if (= 1 (aref (cemi-ctrl2 cemi) 0))
       'knx-group-address
       'knx-individual-address))
 
@@ -330,7 +330,7 @@ x... .... destination address type
   (let ((target-index start-target)
         (copied 0))
     (loop :for b :across source
-          :do (setf (elt target target-index) b)
+          :do (setf (aref target target-index) b)
               (incf target-index)
               (incf copied))
     copied))
@@ -340,18 +340,18 @@ x... .... destination address type
         (byte-count 0)
         (optimized-apci nil)
         (apci-data-byte-array #()))
-    (setf (elt bytes byte-count) (cemi-message-code cemi))
+    (setf (aref bytes byte-count) (cemi-message-code cemi))
     (incf byte-count)
-    (setf (elt bytes byte-count) (cemi-info-len cemi))
+    (setf (aref bytes byte-count) (cemi-info-len cemi))
     (incf byte-count)
     (when (cemi-additional-info cemi)
       (incf byte-count
             (array-copy bytes
                         (cemi-additional-info cemi)
                         :start-target byte-count)))
-    (setf (elt bytes byte-count) (bit-vector-to-number (cemi-ctrl1 cemi)))
+    (setf (aref bytes byte-count) (bit-vector-to-number (cemi-ctrl1 cemi)))
     (incf byte-count)
-    (setf (elt bytes byte-count) (bit-vector-to-number (cemi-ctrl2 cemi)))
+    (setf (aref bytes byte-count) (bit-vector-to-number (cemi-ctrl2 cemi)))
     (incf byte-count)
     (incf byte-count
           (array-copy bytes
@@ -361,20 +361,20 @@ x... .... destination address type
           (array-copy bytes
                       (to-byte-seq (cemi-destination-addr cemi))
                       :start-target byte-count))
-    (setf (elt bytes byte-count) (cemi-npdu-len cemi))
+    (setf (aref bytes byte-count) (cemi-npdu-len cemi))
     (incf byte-count)
-    (setf (elt bytes byte-count)
+    (setf (aref bytes byte-count)
           (logior (cemi-tpci cemi)
                   (ash (cemi-packet-num cemi) 2)
                   (ash (apci-start-code (cemi-apci cemi)) -8)))
     (incf byte-count)
-    (setf (elt bytes byte-count)
+    (setf (aref bytes byte-count)
           (let* ((apci (cemi-apci cemi))
                  (data (cemi-data cemi))
                  (npdu-len (cemi-npdu-len cemi))
                  (dpt-value (cond
                               ((null data) 0)
-                              ((arrayp data) (elt data 0)) ; ?
+                              ((arrayp data) (aref data 0)) ; ?
                               (t (dpt-value data)))))
             (logior (logand (apci-start-code apci) #xff)
                     (cond
@@ -403,8 +403,8 @@ x... .... destination address type
 
 (defun parse-cemi (data)
   "Parse CEMI frame from `DATA`"
-  (let* ((message-code (elt data 0))
-         (info-len (elt data 1))
+  (let* ((message-code (aref data 0))
+         (info-len (aref data 1))
          (service-info-start (+ 2 info-len))
          (additional-info (if (> info-len 0)
                               (subseq data 2 (1- service-info-start)) ; ?
@@ -412,24 +412,24 @@ x... .... destination address type
          (service-info (subseq data service-info-start)))
     (cond
       ((cemi-l_data-p message-code)
-       (let* ((ctrl1 (elt service-info 0))
-              (ctrl2 (elt service-info 1))
+       (let* ((ctrl1 (aref service-info 0))
+              (ctrl2 (aref service-info 1))
               (source-addr (subseq service-info 2 4))
               (destination-addr (subseq service-info 4 6))
-              (npdu-len (elt service-info 6))
+              (npdu-len (aref service-info 6))
               (npdu (if (> npdu-len 0)
                         (seq-to-array
                          (subseq service-info 6); (+ 6 (1+ npdu-len))) ; + len-byte
                          :type 'vector)
                         nil))
               (tpci (when npdu
-                      (logand (elt npdu 1) #xc0)))
+                      (logand (aref npdu 1) #xc0)))
               (packet-num (when npdu
-                            (ash (logand (elt npdu 1) #x3c) -2)))
+                            (ash (logand (aref npdu 1) #x3c) -2)))
               (apci (when npdu
                       (let ((apci-value (to-int
-                                         (logand (elt npdu 1) #x03)
-                                         (logand (elt npdu 2) #xc0))))
+                                         (logand (aref npdu 1) #x03)
+                                         (logand (aref npdu 2) #xc0))))
                         (find-if (lambda (apci)
                                    (apci-equal-p
                                     apci apci-value))
@@ -440,7 +440,7 @@ x... .... destination address type
                          nil)
                         ((= npdu-len 1)
                          ;; 6 bits, part of apci / optimized dpt
-                         (vector (logand (elt npdu 2) #x3f)))
+                         (vector (logand (aref npdu 2) #x3f)))
                         (t
                          ;; then bytes are beyond the apci
                          (let* ((start-index 3)
@@ -455,7 +455,7 @@ x... .... destination address type
           :ctrl1 (number-to-bit-vector ctrl1 8)
           :ctrl2 (number-to-bit-vector ctrl2 8)
           :source-addr (parse-individual-address source-addr)
-          :destination-addr (if (= 0 (elt destination-addr 0))
+          :destination-addr (if (= 0 (aref destination-addr 0))
                                 (parse-individual-address destination-addr)
                                 (parse-group-address destination-addr))
           :npdu-len npdu-len

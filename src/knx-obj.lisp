@@ -91,12 +91,12 @@ The byte-sequence should be a flat vector of octets."))
                 :body-len (+ +knx-header-len+ body-len)))
 
 (defun %parse-header (pkg-data)
-  (let ((header-size (elt pkg-data 0))
-        (knx-version (elt pkg-data 1))
-        (type (to-int (elt pkg-data 2)
-                       (elt pkg-data 3)))
-        (body-size (to-int (elt pkg-data 4)
-                            (elt pkg-data 5))))
+  (let ((header-size (aref pkg-data 0))
+        (knx-version (aref pkg-data 1))
+        (type (to-int (aref pkg-data 2)
+                       (aref pkg-data 3)))
+        (body-size (to-int (aref pkg-data 4)
+                            (aref pkg-data 5))))
     (let ((eff-body-size (- body-size +knx-header-len+)))
       (%make-header
        :len header-size

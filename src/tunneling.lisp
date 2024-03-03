@@ -36,9 +36,9 @@
 
 (defun %parse-conn-header (data)
   (%make-connection-header
-   :channel-id (elt data 1)
-   :seq-counter (elt data 2)
-   :reserved (elt data 3)))
+   :channel-id (aref data 1)
+   :seq-counter (aref data 2)
+   :reserved (aref data 3)))
 
 (defmethod to-byte-seq ((obj connection-header))
   (vector (conn-header-len obj)

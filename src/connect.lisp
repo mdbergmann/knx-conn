@@ -99,8 +99,8 @@ KNXnet/IP body
 
 
 (defmethod parse-to-obj ((obj-type (eql +knx-connect-response+)) header body)
-  (let ((channel-id (elt body 0))
-        (status (elt body 1)))
+  (let ((channel-id (aref body 0))
+        (status (aref body 1)))
     (unless (eql status 0)
       (error 'knx-error-condition
              :format-control "Connect response status"
@@ -182,8 +182,8 @@ KNXnet/IP body
    :status status))
 
 (defmethod parse-to-obj ((obj-type (eql +knx-disconnect-response+)) header body)
-  (let ((channel-id (elt body 0))
-        (status (elt body 1)))
+  (let ((channel-id (aref body 0))
+        (status (aref body 1)))
     (%%make-disconnect-response
      :header header
      :channel-id channel-id

@@ -29,7 +29,7 @@
    :type knx-individual-address))
 
 (defun parse-crd (pkg-data)
-  (%make-crd :len (elt pkg-data 0)
-             :conn-type (elt pkg-data 1)
+  (%make-crd :len (aref pkg-data 0)
+             :conn-type (aref pkg-data 1)
              :individual-address (parse-individual-address
                                   (subseq pkg-data 2 4))))

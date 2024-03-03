@@ -96,8 +96,8 @@ Generic DIB structure:
     (%make-dib-device-info
      :len len
      :type +dib-typecodes-device-info+
-     :knx-medium (elt data 0)
-     :device-status (number-to-bit-vector (elt data 1) 8)
+     :knx-medium (aref data 0)
+     :device-status (number-to-bit-vector (aref data 1) 8)
      :knx-individual-address (seq-to-array (subseq data 2 4) :len 2)
      :proj-inst-identifier (seq-to-array (subseq data 4 6) :len 2)
      :knx-serial-number (seq-to-array (subseq data 6 12) :len 6)
@@ -154,8 +154,8 @@ Generic DIB structure:
     (loop
       (when (= 0 (length sub-data))
         (return))
-      (let* ((id (elt sub-data 0))
-             (version (elt sub-data 1))
+      (let* ((id (aref sub-data 0))
+             (version (aref sub-data 1))
              (service-family (%make-service-family :id id :version version)))
         (setf sub-data (subseq sub-data 2))
         (setf service-families (append service-families (list service-family)))))
@@ -179,8 +179,8 @@ Generic DIB structure:
     (loop
       (when (= 0 (length sub-data))
         (return))
-      (let* ((len (- (elt sub-data 0) 2))
-             (typecode (elt sub-data 1))
+      (let* ((len (- (aref sub-data 0) 2))
+             (typecode (aref sub-data 1))
              (end-index (+ 2 len))
              (data (subseq sub-data 2 end-index))
              (dib 
