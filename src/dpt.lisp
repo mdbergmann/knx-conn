@@ -1,10 +1,10 @@
 (defpackage :knx-conn.dpt
-  (:use :cl :knxobj)
+  (:use :cl :knxobj :knxutil)
   (:nicknames :dpt)
   (:export #:dpt
            #:dpt-value-type
            #:dpt1
-           #:dpt-len
+           #:dpt-byte-len
            #:dpt-value
            #:dpt-raw-value
            #:make-dpt1
@@ -13,7 +13,7 @@
 
 (in-package :knx-conn.dpt)
 
-(defgeneric dpt-len (dpt)
+(defgeneric dpt-byte-len (dpt)
   (:documentation "Return the length of the DPT"))
 
 (defgeneric dpt-raw-value (dpt)
@@ -27,8 +27,7 @@
                 (:constructor nil))
   "A DPT is a data point type.
 I.e. the value for switches, dimmers, temperature sensors, etc. are all encoded using DPTs. The DPTs are used to encode and decode the data for transmission over the KNX bus."
-  (value-type (error "Required value-type") :type string)
-  )
+  (value-type (error "Required value-type") :type string))
 
 ;; ------------------------------
 ;; DPT1
@@ -43,18 +42,17 @@ Encoding    |                             B |
             +---+---+---+---+---+---+---+---+
 Format:     1 bit (B<sub>1</sub>)
 Range:      b = {0 = off, 1 = on}"
-  (raw-value (error "Required value!") :type octet))
+  (raw-value (error "Required value!") :type octet)
+  (value (error "Required value!") :type (member :on :off)))
 
-(defmethod dpt-len ((dpt dpt1))
+(defmethod dpt-byte-len ((dpt dpt1))
   1)
 
 (defmethod dpt-raw-value ((dpt dpt1))
   (dpt1-raw-value dpt))
 
 (defmethod dpt-value ((dpt dpt1))
-  (ecase (dpt1-raw-value dpt)
-    (0 :off)
-    (1 :on)))
+  (dpt1-value dpt))
 
 (defmethod to-byte-seq ((dpt dpt1))
   (vector (dpt1-raw-value dpt)))
@@ -63,6 +61,7 @@ Range:      b = {0 = off, 1 = on}"
   (ecase value-sym
     (:switch
         (%make-dpt1 :value-type "1.001"
+                    :value value
                     :raw-value (ecase value
                                  (:on 1)
                                  (:off 0))))))
@@ -79,11 +78,24 @@ Range:      b = {0 = off, 1 = on}"
 Field Names | (Float Value)                                                 |
 Encoding    | M   E   E   E   E   M   M   M   M   M   M   M   M   M   M   M |
             +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-Format:     2 octets (F<sub>16</sub>)
+Format:     2 octets (F_16)
 Encoding:   Float Value = (0.01 * M)*2(E)
             E = [0 .. 15]
             M = [-2048 .. 2047], two's complement notation"
-  (raw-value (error "Required value!") :type single-float))
+  (raw-value (error "Required raw-value!") :type (vector octet 2))
+  (value (error "Required value!") :type single-float))
+
+(defmethod dpt-byte-len ((dpt dpt9))
+  2)
+
+(defmethod dpt-raw-value ((dpt dpt9))
+  (dpt9-raw-value dpt))
+
+(defmethod dpt-value ((dpt dpt9))
+  (dpt9-value dpt))
+
+(defmethod to-byte-seq ((dpt dpt9))
+  (dpt9-raw-value dpt))
 
 (defun %make-dpt9-temperature-raw-value (value)
   "9.001 Temperature (°C)
@@ -91,12 +103,41 @@ Range:      [-273 .. 670760.96]
 Unit:       °C
 Resolution: 0.01 °C"
   (declare (float value))
-  value)
+  (log:debug "Value for DPT9.001: ~a" value)
+  (let* ((scaled-value (* 100 value))
+         (exponent 0)
+         (value-negative (minusp scaled-value)))
+    (setf scaled-value
+          (if value-negative
+              (do ((scaled-val scaled-value (/ scaled-val 2)))
+                  ((< scaled-val -2048.0)
+                   scaled-val)
+                (incf exponent))
+              (do ((scaled-val scaled-value (/ scaled-val 2)))
+                  ((> scaled-val 2047.0)
+                   scaled-val)
+                (incf exponent))))
+    (log:debug "Exponents for '~a': ~a" value exponent)
+    (log:debug "Scaled value for '~a': ~a" value scaled-value)
+
+    (let ((mantissa (logand (round scaled-value) #x7ff)))
+      (log:debug "Mantissa for '~a': ~a" value mantissa)
+      (let ((high-byte (if value-negative #x80 #x00)))
+        (setf high-byte (logior high-byte (ash exponent 3)))
+        (setf high-byte (logior high-byte (ash mantissa -8)))
+        (log:debug "High byte for '~a': ~a" value high-byte)
+
+        (let ((low-byte (logand mantissa #xff)))
+          (log:debug "Low byte for '~a': ~a" value low-byte)
+          (vector high-byte low-byte))))))
 
 (defun make-dpt9 (value-sym value)
   (declare (float value))
   (ecase value-sym
     (:temperature
         (%make-dpt9 :value-type "9.001"
-                    :raw-value (%make-dpt9-temperature-raw-value value)))))
+                    :raw-value (seq-to-array
+                                (%make-dpt9-temperature-raw-value value)
+                                :len 2)
+                    :value value))))
 

@@ -485,7 +485,7 @@ x... .... destination address type
                    (apci-gv-response-p apci)
                    (apci-gv-write-p apci))
                   ;; TODO: support for optimized dpts
-                  (+ 1 (dpt-len dpt)))
+                  (+ 1 (dpt-byte-len dpt)))
                  (t (error "APCI not supported")))
      :tpci tpci
      :packet-num packet-num
