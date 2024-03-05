@@ -1,6 +1,8 @@
 (defpackage :knx-conn.dpt
   (:use :cl :knxobj :knxutil)
   (:nicknames :dpt)
+  (:import-from #:binding-arrows
+                #:->)
   (:export #:dpt
            #:dpt-value-type
            #:dpt-value
@@ -8,9 +10,29 @@
            #:dpt1
            #:make-dpt1
            #:dpt9
-           #:make-dpt9))
+           #:make-dpt9
+           ;; value/dpt types
+           #:dpt-1.001
+           #:dpt-9.001))
 
 (in-package :knx-conn.dpt)
+
+;; value types ----------------------------
+;; enforce the value types to be a symbol and only defined here.
+
+(defparameter *dpt-supported-value-types*
+  '((:switch . dpt-1.001)
+    (:temperature . dpt-9.001)))
+
+(defun dpt-value-type-p (value-type)
+  "Check if the `VALUE-TYPE' is supported."
+  (find value-type *dpt-supported-value-types* :key #'cdr :test #'eq))
+
+(deftype dpt-value-type ()
+  "A type for the DPT value type."
+  `(satisfies dpt-value-type-p))
+
+;; ------------------------------
 
 (defgeneric dpt-byte-len (dpt)
   (:documentation "Return the length of the DPT"))
@@ -23,7 +45,7 @@
                 (:constructor nil))
   "A DPT is a data point type.
 I.e. the value for switches, dimmers, temperature sensors, etc. are all encoded using DPTs. The DPTs are used to encode and decode the data for transmission over the KNX bus."
-  (value-type (error "Required value-type") :type string))
+  (value-type (error "Required value-type") :type dpt-value-type))
 
 ;; ------------------------------
 ;; DPT1
@@ -53,7 +75,7 @@ Range:      b = {0 = off, 1 = on}"
 (defun make-dpt1 (value-sym value)
   (ecase value-sym
     (:switch
-        (%make-dpt1 :value-type "1.001"
+        (%make-dpt1 :value-type 'dpt-1.001
                     :value value
                     :raw-value (ecase value
                                  (:on 1)
@@ -111,9 +133,10 @@ Resolution: 0.01 °C"
 
       (let ((mantissa (logand (round scaled-value) #x7ff)))
         (log:debug "Mantissa for '~a': ~a" value mantissa)
-        (let* ((high-byte (if value-negative #x80 #x00))
-               (high-byte (logior high-byte (ash exponent 3)))
-               (high-byte (logior high-byte (ash mantissa -8))))
+        (let ((high-byte (->
+                           (if value-negative #x80 #x00)
+                           (logior (ash exponent 3))
+                           (logior (ash mantissa -8)))))
           (log:debug "High byte for '~a': ~a" value high-byte)
 
           (let ((low-byte (logand mantissa #xff)))
@@ -126,7 +149,7 @@ Resolution: 0.01 °C"
   (declare (float value))
   (ecase value-sym
     (:temperature
-        (%make-dpt9 :value-type "9.001"
+        (%make-dpt9 :value-type 'dpt-9.001
                     :raw-value (seq-to-array
                                 (%make-dpt9-temperature-raw-value value)
                                 :len 2)

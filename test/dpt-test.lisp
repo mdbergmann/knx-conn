@@ -14,7 +14,7 @@
 (test create-dpt1-1.001
   ;; on
   (let ((dpt (make-dpt1 :switch :on)))
-    (is (string= (dpt-value-type dpt) "1.001"))
+    (is (eq (dpt-value-type dpt) 'dpt-1.001))
     (is (eq (dpt-value dpt) :on))
     (is (equalp #(1) (knxobj:to-byte-seq dpt))))
   ;; off
@@ -27,6 +27,7 @@
 
 (test create-dpt9-9.001
   (let ((dpt (make-dpt9 :temperature 23.5)))
+    (is (eq (dpt-value-type dpt) 'dpt-9.001))
     (is (= 2 (dpt-byte-len dpt)))
     (is (= (dpt-value dpt) 23.5))
     (is (equalp #(1 46) (to-byte-seq dpt))))

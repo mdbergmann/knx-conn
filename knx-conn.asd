@@ -5,7 +5,8 @@
   :depends-on ("alexandria"
                "usocket"
                "babel"
-               "log4cl")
+               "log4cl"
+               "binding-arrows")
   :components ((:module "src"
                 :serial t
                 :components
