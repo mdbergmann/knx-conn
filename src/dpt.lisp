@@ -3,10 +3,9 @@
   (:nicknames :dpt)
   (:export #:dpt
            #:dpt-value-type
-           #:dpt1
-           #:dpt-byte-len
            #:dpt-value
-           #:dpt-raw-value
+           #:dpt-byte-len
+           #:dpt1
            #:make-dpt1
            #:dpt9
            #:make-dpt9))
@@ -15,9 +14,6 @@
 
 (defgeneric dpt-byte-len (dpt)
   (:documentation "Return the length of the DPT"))
-
-(defgeneric dpt-raw-value (dpt)
-  (:documentation "Return the raw value of the DPT"))
 
 (defgeneric dpt-value (dpt)
   (:documentation "Return the specific value of the DPT"))
@@ -47,9 +43,6 @@ Range:      b = {0 = off, 1 = on}"
 
 (defmethod dpt-byte-len ((dpt dpt1))
   1)
-
-(defmethod dpt-raw-value ((dpt dpt1))
-  (dpt1-raw-value dpt))
 
 (defmethod dpt-value ((dpt dpt1))
   (dpt1-value dpt))
@@ -88,9 +81,6 @@ Encoding:   Float Value = (0.01 * M)*2(E)
 (defmethod dpt-byte-len ((dpt dpt9))
   2)
 
-(defmethod dpt-raw-value ((dpt dpt9))
-  (dpt9-raw-value dpt))
-
 (defmethod dpt-value ((dpt dpt9))
   (dpt9-value dpt))
 
@@ -107,31 +97,32 @@ Resolution: 0.01 °C"
   (let* ((scaled-value (* 100 value))
          (exponent 0)
          (value-negative (minusp scaled-value)))
-    (setf scaled-value
-          (if value-negative
-              (do ((scaled-val scaled-value (/ scaled-val 2)))
-                  ((< scaled-val -2048.0)
-                   scaled-val)
-                (incf exponent))
-              (do ((scaled-val scaled-value (/ scaled-val 2)))
-                  ((> scaled-val 2047.0)
-                   scaled-val)
-                (incf exponent))))
-    (log:debug "Exponents for '~a': ~a" value exponent)
-    (log:debug "Scaled value for '~a': ~a" value scaled-value)
+    (flet ((loop-scaled (pred-p)
+             (do ((scaled-val scaled-value (/ scaled-val 2)))
+                 ((funcall pred-p scaled-val)
+                  scaled-val)
+               (incf exponent))))
+      (setf scaled-value
+            (if value-negative
+                (loop-scaled (lambda (val) (< val -2048.0)))
+                (loop-scaled (lambda (val) (> val 2047.0)))))
+      (log:debug "Exponents for '~a': ~a" value exponent)
+      (log:debug "Scaled value for '~a': ~a" value scaled-value)
 
-    (let ((mantissa (logand (round scaled-value) #x7ff)))
-      (log:debug "Mantissa for '~a': ~a" value mantissa)
-      (let ((high-byte (if value-negative #x80 #x00)))
-        (setf high-byte (logior high-byte (ash exponent 3)))
-        (setf high-byte (logior high-byte (ash mantissa -8)))
-        (log:debug "High byte for '~a': ~a" value high-byte)
+      (let ((mantissa (logand (round scaled-value) #x7ff)))
+        (log:debug "Mantissa for '~a': ~a" value mantissa)
+        (let* ((high-byte (if value-negative #x80 #x00))
+               (high-byte (logior high-byte (ash exponent 3)))
+               (high-byte (logior high-byte (ash mantissa -8))))
+          (log:debug "High byte for '~a': ~a" value high-byte)
 
-        (let ((low-byte (logand mantissa #xff)))
-          (log:debug "Low byte for '~a': ~a" value low-byte)
-          (vector high-byte low-byte))))))
+          (let ((low-byte (logand mantissa #xff)))
+            (log:debug "Low byte for '~a': ~a" value low-byte)
+            (vector high-byte low-byte)))))))
 
 (defun make-dpt9 (value-sym value)
+  "9.001 Temperature (°C)
+`VALUE-SYM' can be `:temperature' for 9.001."
   (declare (float value))
   (ecase value-sym
     (:temperature

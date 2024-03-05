@@ -51,7 +51,7 @@ OK - separate 'read' request, 'read' will get a result asynchonously.
 OK - move to separate project
 OK - implement disconnect
 OK - do something with channel-id and seq-counter
-=> - more dpt types
+OK - more dpt types
 - parse dpts from byte array
 - dpt1, more on/off options like (t / nil)
 - rename `dpt-len' to `dpt-byte-len'
