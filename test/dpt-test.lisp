@@ -49,4 +49,6 @@
     (is (= (dpt-value dpt) 23.5))
     (is (eq (dpt-value-type dpt) 'dpt-9.001))))
 
+;; test with 0 and - values, boundaries, ...
+
 (run! 'dpt-tests)
