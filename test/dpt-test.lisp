@@ -47,7 +47,24 @@
               #(12 151))))
     (is (not (null dpt)))
     (is (= (dpt-value dpt) 23.5))
-    (is (eq (dpt-value-type dpt) 'dpt-9.001))))
+    (is (eq (dpt-value-type dpt) 'dpt-9.001)))
+  ;; 0
+  (let ((dpt (make-dpt9 :temperature 0.0)))
+    (is (= (dpt-value dpt) 0.0))
+    (is (equalp #(0 0) (to-byte-seq dpt)))
+    (is (equalp (parse-to-dpt
+                 (value-type-string-to-symbol "9.001")
+                 #(0 0))
+                dpt)))
+  ;; -123.5
+  (let ((dpt (make-dpt9 :temperature -123.5)))
+    (is (= (dpt-value dpt) -123.5))
+    (is (equalp #(153 248) (to-byte-seq dpt)))
+    (is (equalp (parse-to-dpt
+                 (value-type-string-to-symbol "9.001")
+                 #(153 248))
+                dpt)))
+  )
 
 ;; test with 0 and - values, boundaries, ...
 
