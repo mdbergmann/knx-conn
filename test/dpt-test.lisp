@@ -23,17 +23,30 @@
     (is (equalp #(0) (to-byte-seq dpt))))
   ;; errors
   (signals type-error (make-dpt1 :switch :unknown))
-  (signals type-error (make-dpt1 :unknown :on)))
+  (signals type-error (make-dpt1 :unknown :on))
+  ;; parse from byte-seq
+  (let ((dpt (parse-to-dpt
+              (value-type-string-to-symbol "1.001")
+              #(1))))
+    (is (not (null dpt)))
+    (is (eq (dpt-value dpt) :on))
+    (is (eq (dpt-value-type dpt) 'dpt-1.001))))
 
 (test create-dpt9-9.001
   (let ((dpt (make-dpt9 :temperature 23.5)))
     (is (eq (dpt-value-type dpt) 'dpt-9.001))
     (is (= 2 (dpt-byte-len dpt)))
     (is (= (dpt-value dpt) 23.5))
-    (is (equalp #(1 46) (to-byte-seq dpt))))
+    (is (equalp #(12 151) (to-byte-seq dpt))))
   (signals type-error (make-dpt9 :unknown 23.5))
   (signals type-error (make-dpt9 :temperature "23.5"))
   (signals type-error (make-dpt9 :temperature 23))
-  )
+  ;; parse
+  (let ((dpt (parse-to-dpt
+              (value-type-string-to-symbol "9.001")
+              #(12 151))))
+    (is (not (null dpt)))
+    (is (= (dpt-value dpt) 23.5))
+    (is (eq (dpt-value-type dpt) 'dpt-9.001))))
 
 (run! 'dpt-tests)

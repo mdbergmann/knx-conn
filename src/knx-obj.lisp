@@ -51,8 +51,11 @@
 (defgeneric to-byte-seq (knx-obj)
   (:documentation "Converts the object to the byte sequence.
 The byte-sequence should be a flat vector of octets."))
-(defgeneric parse-to-obj (obj-type header-data body-data))
-
+(defgeneric parse-to-obj (obj-type header-data body-data)
+  (:documentation "Parses the package data into the object.
+`OBJ-TYPE`: type of the object to parse the data into.
+`HEADER-DATA`: header data as `knx-header` object.
+`BODY-DATA`: body data as a byte sequence."))
 
 ;; -----------------------------
 

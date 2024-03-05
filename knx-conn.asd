@@ -53,7 +53,7 @@ OK - move to separate project
 OK - implement disconnect
 OK - do something with channel-id and seq-counter
 OK - more dpt types
-- parse dpts from byte array
+=> - parse dpts from byte array
 - dpt1, more on/off options like (t / nil)
 - rename `dpt-len' to `dpt-byte-len'
 - default cemi tests

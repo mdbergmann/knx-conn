@@ -6,7 +6,9 @@
   (:export #:dpt
            #:dpt-value-type
            #:dpt-value
+           #:value-type-string-to-symbol
            #:dpt-byte-len
+           #:parse-to-dpt
            #:dpt1
            #:make-dpt1
            #:dpt9
@@ -28,11 +30,18 @@
   "Check if the `VALUE-TYPE' is supported."
   (find value-type *dpt-supported-value-types* :key #'cdr :test #'eq))
 
+(defun value-type-string-to-symbol (value-type-str)
+  "Convert the `VALUE-TYPE-STR', i.e. \"1.001\" to a symbol, i.e. `DPT-1.001'."
+  (find-symbol (format nil "DPT-~a" value-type-str) :dpt))
+
 (deftype dpt-value-type ()
   "A type for the DPT value type."
   `(satisfies dpt-value-type-p))
 
 ;; ------------------------------
+
+(defgeneric parse-to-dpt (value-type byte-vec)
+  (:documentation "Parse `byte-vec' to a DPT of `VALUE-TYPE'"))
 
 (defgeneric dpt-byte-len (dpt)
   (:documentation "Return the length of the DPT"))
@@ -72,6 +81,14 @@ Range:      b = {0 = off, 1 = on}"
 (defmethod to-byte-seq ((dpt dpt1))
   (vector (dpt1-raw-value dpt)))
 
+(defmethod parse-to-dpt ((value-type (eql 'dpt-1.001)) byte-vec)
+  (let ((value (if (zerop (aref byte-vec 0))
+                   :off
+                   :on)))
+    (%make-dpt1 :value-type value-type
+                :value value
+                :raw-value (aref byte-vec 0))))
+
 (defun make-dpt1 (value-sym value)
   (ecase value-sym
     (:switch
@@ -109,6 +126,22 @@ Encoding:   Float Value = (0.01 * M)*2(E)
 (defmethod to-byte-seq ((dpt dpt9))
   (dpt9-raw-value dpt))
 
+(defmethod parse-to-dpt ((value-type (eql 'dpt-9.001)) byte-vec)
+  (assert (= (length byte-vec) 2) (byte-vec) "Byte vector must be of length 2")
+  (log:debug "Byte vector for DPT9.001: ~a" byte-vec)
+  (let ((exponent (ash (logand (aref byte-vec 0) #x78) -3))
+        (mantissa (let* ((high-byte (ash (logand (aref byte-vec 0) #x80) 24))
+                         (high-byte (logior high-byte (ash (logand (aref byte-vec 0) #x07) 28)))
+                         (high-byte (ash high-byte -20))
+                         (low-byte (logand (aref byte-vec 1) #xff)))
+                    (logior high-byte low-byte))))
+    (log:debug "Exponent: ~a" exponent)
+    (log:debug "Mantissa: ~a" mantissa)
+    (let ((value (* (ash 1 exponent) mantissa 0.01)))
+      (%make-dpt9 :value-type value-type
+                  :raw-value (seq-to-array byte-vec :len 2)
+                  :value value))))
+  
 (defun %make-dpt9-temperature-raw-value (value)
   "9.001 Temperature (°C)
 Range:      [-273 .. 670760.96]
@@ -121,7 +154,7 @@ Resolution: 0.01 °C"
          (value-negative (minusp scaled-value)))
     (flet ((loop-scaled (pred-p)
              (do ((scaled-val scaled-value (/ scaled-val 2)))
-                 ((funcall pred-p scaled-val)
+                 ((not (funcall pred-p scaled-val))
                   scaled-val)
                (incf exponent))))
       (setf scaled-value

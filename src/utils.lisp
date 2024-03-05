@@ -34,10 +34,13 @@
    (loop :for i :from 0 :below len
          :collect (logand (ash int (* i -8)) #xff))))
 
-(defun seq-to-array (seq &key (len 0 len-present-p) (type 'simple-array))
+(defun seq-to-array (seq &key
+                           (len 0 len-present-p)
+                           (arr-type 'simple-array)
+                           (elem-type '(unsigned-byte 8)))
   (if len-present-p
-      (coerce seq `(,type (unsigned-byte 8) (,len)))
-      (coerce seq `(,type (unsigned-byte 8)))))
+      (coerce seq `(,arr-type ,elem-type (,len)))
+      (coerce seq `(,arr-type ,elem-type))))
 
 (defun number-to-bit-vector (num bit-len)
   (coerce (reverse
