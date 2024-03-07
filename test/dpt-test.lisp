@@ -41,6 +41,8 @@
   (signals type-error (make-dpt9 :unknown 23.5))
   (signals type-error (make-dpt9 :temperature "23.5"))
   (signals type-error (make-dpt9 :temperature 23))
+  ;; enforce limits
+  (signals dpt-out-of-bounds-error (make-dpt9 :temperature -274.0))
   ;; parse
   (let ((dpt (parse-to-dpt
               (value-type-string-to-symbol "9.001")
@@ -68,3 +70,4 @@
 
 ;; test with 0 and - values, boundaries, ...
 
+(run! 'dpt-tests)

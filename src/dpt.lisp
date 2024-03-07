@@ -15,7 +15,9 @@
            #:make-dpt9
            ;; value/dpt types
            #:dpt-1.001
-           #:dpt-9.001))
+           #:dpt-9.001
+           ;; conditions
+           #:dpt-out-of-bounds-error))
 
 (in-package :knx-conn.dpt)
 
@@ -37,6 +39,19 @@
 (deftype dpt-value-type ()
   "A type for the DPT value type."
   `(satisfies dpt-value-type-p))
+
+;; conditions ----------------------------
+
+(define-condition dpt-out-of-bounds-error (simple-error) ()
+  (:report (lambda (condition stream)
+             (format stream "DPT value out of bounds: ~a"
+                     (simple-condition-format-control condition)))))
+
+(defun %assert-bounds (min max value)
+  "Assert that the value is within the bounds."
+  (unless (< min value max)
+    (error 'dpt-out-of-bounds-error :format-control "Value out of bounds"
+           :format-arguments (list value min max))))
 
 ;; ------------------------------
 
@@ -146,7 +161,7 @@ Encoding:   Float Value = (0.01 * M)*2(E)
                   :raw-value (seq-to-array byte-vec :len 2)
                   :value value))))
   
-(defun %make-dpt9-temperature-raw-value (value)
+(defun %make-dpt9-double-octet-float-value (value)
   "9.001 Temperature (°C)
 Range:      [-273 .. 670760.96]
 Unit:       °C
@@ -187,9 +202,11 @@ Resolution: 0.01 °C"
   (declare (float value))
   (ecase value-sym
     (:temperature
-        (%make-dpt9 :value-type 'dpt-9.001
-                    :raw-value (seq-to-array
-                                (%make-dpt9-temperature-raw-value value)
-                                :len 2)
-                    :value value))))
+     (progn
+       (%assert-bounds -273.0 670760.96 value)
+       (%make-dpt9 :value-type 'dpt-9.001
+                   :raw-value (seq-to-array
+                               (%make-dpt9-double-octet-float-value value)
+                               :len 2)
+                   :value value)))))
 
