@@ -68,6 +68,3 @@
       (is (not (null parsed-dpt)))
       (is (= (dpt-value parsed-dpt) -123.52)))))
 
-;; test with 0 and - values, boundaries, ...
-
-(run! 'dpt-tests)

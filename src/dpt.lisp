@@ -47,11 +47,12 @@
              (format stream "DPT value out of bounds: ~a"
                      (simple-condition-format-control condition)))))
 
-(defun %assert-bounds (min max value)
+(defmacro %with-bounds-check (bounds-fun &body body)
   "Assert that the value is within the bounds."
-  (unless (< min value max)
-    (error 'dpt-out-of-bounds-error :format-control "Value out of bounds"
-           :format-arguments (list value min max))))
+  `(progn
+     (unless (funcall ,bounds-fun)
+       (error 'dpt-out-of-bounds-error :format-control "Value out of bounds"))
+     ,@body))
 
 ;; ------------------------------
 
@@ -202,8 +203,8 @@ Resolution: 0.01 °C"
   (declare (float value))
   (ecase value-sym
     (:temperature
-     (progn
-       (%assert-bounds -273.0 670760.96 value)
+     (%with-bounds-check
+         (lambda () (<= -273.0 value 670760.96))
        (%make-dpt9 :value-type 'dpt-9.001
                    :raw-value (seq-to-array
                                (%make-dpt9-double-octet-float-value value)
