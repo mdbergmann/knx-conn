@@ -38,5 +38,3 @@
     (is (not (null req)))))
 
 ;; TODO: Add more tests
-
-(run! 'tunnelling-tests)

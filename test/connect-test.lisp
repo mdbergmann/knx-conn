@@ -35,4 +35,4 @@
     (is (= (connect::disconnect-response-channel-id resp) 0))
     (is (= (connect::disconnect-response-status resp) 0))))
 
-(run! 'connect-tests)
+

@@ -281,4 +281,3 @@
                    (tunnelling-request-conn-header req))))))
     (is (= 1 (length (invocations 'usocket:socket-send))))))
 
-(run! 'knx-connect-tests)

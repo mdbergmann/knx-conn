@@ -63,4 +63,4 @@
     (is (equalp *l-data* (knxobj:to-byte-seq cemi))))
   )
 
-(run! 'cemi-tests)
+

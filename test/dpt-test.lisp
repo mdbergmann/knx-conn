@@ -68,4 +68,3 @@
 
 ;; test with 0 and - values, boundaries, ...
 
-(run! 'dpt-tests)
