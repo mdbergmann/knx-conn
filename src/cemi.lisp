@@ -262,14 +262,14 @@ x... .... frame type
 .... xx.. priority"
   (let ((ctrl1 (cemi-ctrl1 cemi)))
     (cond
-      ((and (aref ctrl1 4) (aref ctrl1 5))
+      ((and (= 0 (aref ctrl1 4)) (= 0 (aref ctrl1 5)))
+       +priority-system+)
+      ((and (= 1 (aref ctrl1 4)) (= 1 (aref ctrl1 5)))
        +priority-low+)
-      ((and (aref ctrl1 4) (not (aref ctrl1 5)))
+      ((and (= 1 (aref ctrl1 4)) (= 0 (aref ctrl1 5)))
        +priority-urgent+)
-      ((and (not (aref ctrl1 4)) (aref ctrl1 5))
-       +priority-normal+)
-      ((and (not (aref ctrl1 4)) (not (aref ctrl1 5)))
-       +priority-system+))))
+      ((and (= 0 (aref ctrl1 4)) (= 1 (aref ctrl1 5)))
+       +priority-normal+))))
 
 (defun %ctrl1-ack-p (cemi)
   "Return T if CEMI requests an ACK
