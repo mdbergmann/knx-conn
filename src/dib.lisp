@@ -110,7 +110,7 @@ Generic DIB structure:
                                         (or
                                          (position 0 device-friendly-name)
                                          30))
-                                :type 'vector)))))
+                                :arr-type 'vector)))))
 
 (defstruct (service-family (:include knx-obj)
                            (:constructor %make-service-family))

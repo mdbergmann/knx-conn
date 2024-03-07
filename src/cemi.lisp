@@ -420,7 +420,7 @@ x... .... destination address type
               (npdu (if (> npdu-len 0)
                         (seq-to-array
                          (subseq service-info 6); (+ 6 (1+ npdu-len))) ; + len-byte
-                         :type 'vector)
+                         :arr-type 'vector)
                         nil))
               (tpci (when npdu
                       (logand (aref npdu 1) #xc0)))
@@ -447,7 +447,7 @@ x... .... destination address type
                                 (end-index (1- (+ start-index npdu-len))))
                            (seq-to-array
                             (subseq npdu start-index end-index)
-                            :type 'vector)))))))
+                            :arr-type 'vector)))))))
          (%make-cemi-l-data
           :message-code message-code
           :info-len info-len
