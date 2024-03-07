@@ -130,10 +130,13 @@ Encoding:   Float Value = (0.01 * M)*2(E)
   (assert (= (length byte-vec) 2) (byte-vec) "Byte vector must be of length 2")
   (log:debug "Byte vector for DPT9.001: ~a" byte-vec)
   (let ((exponent (ash (logand (aref byte-vec 0) #x78) -3))
-        (mantissa (let ((high-byte
-                          (-> (ash (logand (aref byte-vec 0) #x80) 24)
-                            (logior (ash (logand (aref byte-vec 0) #x07) 28))
-                            (ash -20)))
+        (mantissa (let* ((high-byte (ash (logand (aref byte-vec 0) #x80) 24))
+                         (high-byte (if (zerop high-byte)
+                                        high-byte
+                                        (1+ (lognot high-byte)))) ; two's complement
+                         (high-byte (logior high-byte 
+                                            (ash (logand (aref byte-vec 0) #x07) 28)))
+                         (high-byte (ash high-byte -20))
                          (low-byte (logand (aref byte-vec 1) #xff)))
                     (logior high-byte low-byte))))
     (log:debug "Exponent: ~a" exponent)
@@ -151,14 +154,14 @@ Resolution: 0.01 °C"
   (declare (float value))
   (log:debug "Value for DPT9.001: ~a" value)
   (let* ((scaled-value (* 100 value))
-         (exponent 0)
-         (value-negative (minusp scaled-value)))
+         (value-negative (minusp scaled-value))
+         (exponent 0))
     (flet ((loop-scaled (pred-p)
-             (loop :for scaled-val := scaled-value
-                     :then (/ scaled-val 2)
-                   :while (funcall pred-p scaled-val)
+             (loop :for scaled := scaled-value
+                     :then (/ scaled 2)
+                   :while (funcall pred-p scaled)
                    :do (incf exponent)
-                   :finally (return scaled-val))))
+                   :finally (return scaled))))
       (setf scaled-value
             (if value-negative
                 (loop-scaled (lambda (val) (< val -2048.0)))

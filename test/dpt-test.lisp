@@ -60,11 +60,11 @@
   (let ((dpt (make-dpt9 :temperature -123.5)))
     (is (= (dpt-value dpt) -123.5))
     (is (equalp #(153 248) (to-byte-seq dpt)))
-    (is (equalp (parse-to-dpt
-                 (value-type-string-to-symbol "9.001")
-                 #(153 248))
-                dpt)))
-  )
+    (let ((parsed-dpt (parse-to-dpt
+                       (value-type-string-to-symbol "9.001")
+                       #(153 248))))
+      (is (not (null parsed-dpt)))
+      (is (= (dpt-value parsed-dpt) -123.52)))))
 
 ;; test with 0 and - values, boundaries, ...
 
