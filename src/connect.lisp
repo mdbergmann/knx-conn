@@ -62,7 +62,7 @@ KNXnet/IP body
      :cri cri)))
 
 (defmethod to-byte-seq ((obj knx-connect-request))
-  (concatenate 'vector
+  (concatenate '(vector octet)
                (call-next-method obj)
                (to-byte-seq (connect-request-hpai-ctrl-endpoint obj))
                (to-byte-seq (connect-request-hpai-data-endpoint obj))
@@ -113,7 +113,7 @@ KNXnet/IP body
      :crd (parse-crd (subseq body 10)))))
 
 (defmethod to-byte-seq ((obj knx-connect-response))
-  (concatenate 'vector
+  (concatenate '(vector octet)
                (call-next-method obj)
                (vector (connect-response-channel-id obj)
                        (connect-response-status obj))
@@ -150,7 +150,7 @@ KNXnet/IP body
    :hpai *hpai-unbound-addr*))
 
 (defmethod to-byte-seq ((obj knx-disconnect-request))
-  (concatenate 'vector
+  (concatenate '(vector octet)
                (call-next-method obj)
                (vector (disconnect-request-channel-id obj) 0)
                (to-byte-seq (disconnect-request-hpai obj))))

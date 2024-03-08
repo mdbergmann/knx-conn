@@ -37,7 +37,7 @@ KNXnet/IP body
    :hpai hpai))
 
 (defmethod to-byte-seq ((obj knx-descr-request))
-  (concatenate 'vector
+  (concatenate '(vector octet)
                (call-next-method obj)
                (to-byte-seq (descr-request-hpai obj))))
 

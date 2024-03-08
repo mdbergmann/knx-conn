@@ -193,8 +193,8 @@ Resolution: 0.01 °C"
         (log:debug "Mantissa for '~a': ~a" value mantissa)
         (let ((high-byte (->
                            (if value-negative #x80 #x00)
-                           (logior (ash exponent 3))
-                           (logior (ash mantissa -8)))))
+                           (logior (ash exponent 3)
+                                   (ash mantissa -8)))))
           (log:debug "High byte for '~a': ~a" value high-byte)
 
           (let ((low-byte (logand mantissa #xff)))

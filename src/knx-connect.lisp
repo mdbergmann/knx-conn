@@ -33,13 +33,15 @@
 (defun disconnect ()
   "Disconnect from the KNXnet/IP gateway."
   (assert *conn* nil "No connection!")
-  (usocket:socket-close *conn*))
+  (usocket:socket-close *conn*)
+  (setf *conn* nil))
 
 (defun send-knx-data (request)
   "Send the given `request` to the KNXnet/IP gateway."
   (assert *conn* nil "No connection!")
   (log:debug "Sending obj: ~a" request)
   (let ((req-bytes (to-byte-seq request)))
+    (check-type req-bytes (simple-array (unsigned-byte 8) (*)))
     (log:debug "Sending bytes: ~a" req-bytes)
     (usocket:socket-send *conn* req-bytes (length req-bytes)))
   request)
@@ -69,7 +71,7 @@
   "The channel-id of the current tunnelling connection.")
 
 (defun %assert-channel-id ()
-  (assert (and (integerp *channel-id*) (> *channel-id* 0))
+  (assert (integerp *channel-id*)
           nil "No open connection!"))
 
 (defvar *seq-counter* 0

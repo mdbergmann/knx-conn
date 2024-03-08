@@ -84,7 +84,7 @@ cEMI frame
      :cemi (parse-cemi (subseq body +conn-header-structure-len+)))))
 
 (defmethod to-byte-seq ((obj knx-tunnelling-request))
-  (concatenate 'vector
+  (concatenate '(vector octet)
                (call-next-method obj)
                (to-byte-seq (tunnelling-request-conn-header obj))
                (to-byte-seq (tunnelling-request-cemi obj))))
