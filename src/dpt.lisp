@@ -145,22 +145,26 @@ Encoding:   Float Value = (0.01 * M)*2(E)
 (defmethod parse-to-dpt ((value-type (eql 'dpt-9.001)) byte-vec)
   (assert (= (length byte-vec) 2) (byte-vec) "Byte vector must be of length 2")
   (log:debug "Byte vector for DPT9.001: ~a" byte-vec)
-  (let ((exponent (ash (logand (aref byte-vec 0) #x78) -3))
-        (mantissa (let* ((high-byte (ash (logand (aref byte-vec 0) #x80) 24))
-                         (high-byte (if (zerop high-byte)
-                                        high-byte
-                                        (1+ (lognot high-byte)))) ; two's complement
-                         (high-byte (logior high-byte 
-                                            (ash (logand (aref byte-vec 0) #x07) 28)))
-                         (high-byte (ash high-byte -20))
-                         (low-byte (logand (aref byte-vec 1) #xff)))
-                    (logior high-byte low-byte))))
-    (log:debug "Exponent: ~a" exponent)
-    (log:debug "Mantissa: ~a" mantissa)
-    (let ((value (* (ash 1 exponent) mantissa 0.01)))
-      (%make-dpt9 :value-type value-type
-                  :raw-value (seq-to-array byte-vec :len 2)
-                  :value value))))
+  (labels ((two-completement-or-value (value)
+             (if (zerop value)
+                 value
+                 (1+ (lognot value))))
+           (extract-and-normalize-high-byte (high-byte)
+             (-> (ash (logand high-byte #x80) 24)
+               (two-completement-or-value)
+               (logior (ash (logand high-byte #x07) 28))
+               (ash -20))))
+    (let ((exponent (ash (logand (aref byte-vec 0) #x78) -3))
+          (mantissa (let ((high-byte (extract-and-normalize-high-byte
+                                      (aref byte-vec 0)))
+                          (low-byte (logand (aref byte-vec 1) #xff)))
+                      (logior high-byte low-byte))))
+      (log:debug "Exponent: ~a" exponent)
+      (log:debug "Mantissa: ~a" mantissa)
+      (let ((value (* (ash 1 exponent) mantissa 0.01)))
+        (%make-dpt9 :value-type value-type
+                    :raw-value (seq-to-array byte-vec :len 2)
+                    :value value)))))
   
 (defun %make-dpt9-double-octet-float-value (value)
   "9.001 Temperature (°C)

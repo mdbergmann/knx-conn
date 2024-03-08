@@ -37,6 +37,9 @@
                 ((:file "test-all")
                  (:file "address-test")
                  (:file "cemi-test")
+                 (:file "dpt-test")
+                 (:file "connect-test")
+                 (:file "tunnelling-test")
                  (:file "knx-connect-test")
                  )))
   :description "Test system for knx"
@@ -53,9 +56,9 @@ OK - move to separate project
 OK - implement disconnect
 OK - do something with channel-id and seq-counter
 OK - more dpt types
-=> - parse dpts from byte array
+OK - parse dpts from byte array
+OK - rename `dpt-len' to `dpt-byte-len'
 - dpt1, more on/off options like (t / nil)
-- rename `dpt-len' to `dpt-byte-len'
 - default cemi tests
 - more error handling tests
 - add a 'client' top-level package (rename knx-connect to knx-client)
