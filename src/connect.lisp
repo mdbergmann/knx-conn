@@ -18,6 +18,7 @@
 (in-package :knx-conn.connect)
 
 (defconstant +connect-status-no-error+ #x00)
+(defconstant +connect-status-err-conn-id+ #x21)
 (defconstant +connect-status-err-conn-type+ #x22)
 (defconstant +connect-status-err-conn-option+ #x23)
 (defconstant +connect-status-err-no-more-conns+ #x24)

@@ -20,7 +20,7 @@
 
 (defvar *conn* nil)
 
-(defun connect (address &optional (port 3761))
+(defun connect (address &optional (port 3671))
   "Connect to the KNXnet/IP gateway at the given `address` and `port`."
   (let ((conn (usocket:socket-connect
                address port
@@ -50,18 +50,19 @@
   "Receive a KNXnet/IP request from the KNXnet/IP gateway."
   (assert *conn* nil "No connection!")
   (let ((buf (make-array 1024 :element-type 'octet)))
+    (log:debug "Receiving data...")
     (handler-case 
         (let ((received-obj
                 (parse-root-knx-object
                  (usocket:socket-receive *conn* buf 1024))))
           (log:debug "Received obj: ~a" received-obj)
           (values received-obj nil))
-      (condition (c)
-        (log:info "Condition: ~a" c)
-        (values nil c))
       (error (e)
         (log:info "Error: ~a" e)
-        (values nil e)))))
+        (values nil e))
+      (condition (c)
+        (log:info "Condition: ~a" c)
+        (values nil c)))))
 
 ;; -----------------------------
 ;; high-level comm
