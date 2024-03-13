@@ -6,7 +6,8 @@
                "usocket"
                "babel"
                "log4cl"
-               "binding-arrows")
+               "binding-arrows"
+               "sento")
   :components ((:module "src"
                 :serial t
                 :components
@@ -58,7 +59,7 @@ OK - do something with channel-id and seq-counter
 OK - more dpt types
 OK - parse dpts from byte array
 OK - rename `dpt-len' to `dpt-byte-len'
-- add a 'client' top-level package (rename knx-connect to knx-client)
+=> - add a 'client' top-level package (rename knx-connect to knx-client)
 - add separate 'server' package based on Sento
 - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (Datum)
 - default cemi tests

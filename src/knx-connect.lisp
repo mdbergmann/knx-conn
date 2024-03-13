@@ -81,6 +81,98 @@
 (defun %next-seq-counter ()
   (setf *seq-counter* (mod (1+ *seq-counter*) 255)))
 
+
+;; ---------------------------------
+;; comunication queues, actors, etc
+;; ---------------------------------
+
+(defvar *asys* nil)
+(defvar *sender* nil "actor")
+(defvar *receiver* nil "actor")
+
+(defun %ensure-asys ()
+  (log:info "Ensuring actor system...")
+  (unless *asys*
+    (setf *asys* (asys:make-actor-system '(:dispatchers
+                                           (:shared (:workers 2)
+                                            :receiver (:workers 1)
+                                            :waiter (:workers 1))
+                                           :scheduler
+                                           (:enabled :false)))))
+  (%make-sender)
+  (%make-receiver))
+
+(defun %shutdown-asys ()
+  (log:info "Shutting down actor system...")
+  (when *asys*
+    (ac:shutdown *asys* :wait t)
+    (setf *asys* nil)
+    (setf *sender* nil)
+    (setf *receiver* nil)))
+
+;; sender
+
+(defun %sender-receive (msg)
+  "`MSG` is request"
+  (log:debug "Sender received: ~a" msg)
+  (send-knx-data msg))
+
+(defun %make-sender ()
+  (unless *sender*
+    (setf *sender* (ac:actor-of *asys*
+                                :name "KNX sender"
+                                :receive (lambda (msg) (%sender-receive msg))))))
+
+;; receiver
+
+(defvar *received-things* nil)
+
+(defun %receiver-receive (msg)
+  (log:debug "Receiver received: ~a" msg)
+  (let ((self act:*self*)
+        (sender act:*sender*))
+    (case (car msg)
+      (:receive (tasks:with-context (*asys* :receiver)
+                  (tasks:task-async
+                   (lambda ()
+                     (receive-knx-data))
+                   :on-complete-fun
+                   (lambda (result)
+                     (log:debug "KNX response received: ~a" result)
+                     ;; TODO: error handling for `(cons :handler-error foo)`
+                     (act:! self `(:enqueue . ,result))))))
+      (:enqueue (push (cdr msg) *received-things*))
+      (:wait-on-resp-type
+       (let ((resp-type (cdr msg)))
+         (log:debug "Checking for response of type: ~a" resp-type)
+         (flet ((wait-and-call-again ()
+                    (tasks:with-context (*asys* :waiter)
+                      (tasks:task-start
+                       (lambda ()
+                         (sleep 0.2)
+                         (act:! self `(:wait-on-resp-type . ,resp-type) sender))))))
+           (loop
+             (let ((thing (pop *received-things*)))
+               (unless thing
+                 (log:debug "No thing received yet")
+                 (wait-and-call-again)
+                 (return))
+               (log:debug "Popped thing of type: ~a" (type-of thing))
+               (if (typep thing resp-type)
+                   (progn
+                     (log:debug "Replying to caller.")
+                     (act:reply thing))
+                   (wait-and-call-again))))))))))
+
+(defun %make-receiver ()
+  (unless *receiver*
+    (setf *receiver* (ac:actor-of *asys*
+                                  :name "KNX receiver"
+                                  :dispatcher :pinned
+                                  :receive (lambda (msg)
+                                             (%receiver-receive msg))))
+    (act:! *receiver* '(:receive . nil))))
+
 ;; ---------------------------------
 
 (defmacro %with-request-response (request)
@@ -89,7 +181,9 @@
      (receive-knx-data)))
 
 (defun retrieve-descr-info ()
-  (%with-request-response (make-descr-request *hpai-unbound-addr*)))
+  (let ((req (make-descr-request *hpai-unbound-addr*)))
+    (act:! *sender* req)
+    (act:? *receiver* `(:wait-on-resp-type . knx-descr-response))))
   
 (defun establish-tunnel-connection ()
   (multiple-value-bind (response err)
