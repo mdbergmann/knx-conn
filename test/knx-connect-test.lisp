@@ -70,6 +70,11 @@
       (is (eql 1 (length (invocations 'usocket:socket-send))))
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
+;; TODO:
+;; - wait-on-resp-type with timeout
+;; - :receive with `(cons :handler-error foo)`
+
+
 ;; (defparameter *raw-descr-request*
 ;;   (make-array 14
 ;;               :element-type '(unsigned-byte 8)

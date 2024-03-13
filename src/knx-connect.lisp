@@ -128,7 +128,7 @@
 (defvar *received-things* nil)
 
 (defun %receiver-receive (msg)
-  (log:debug "Receiver received: ~a" msg)
+  (log:debug "Receiver received: ~a" (car msg))
   (let ((self act:*self*)
         (sender act:*sender*))
     (case (car msg)
@@ -138,8 +138,7 @@
                      (receive-knx-data))
                    :on-complete-fun
                    (lambda (result)
-                     (log:debug "KNX response received: ~a" result)
-                     ;; TODO: error handling for `(cons :handler-error foo)`
+                     (log:debug "KNX response received: ~a" (type-of result))
                      (act:! self `(:enqueue . ,result))))))
       (:enqueue (push (cdr msg) *received-things*))
       (:wait-on-resp-type
