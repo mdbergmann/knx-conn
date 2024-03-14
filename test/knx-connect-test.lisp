@@ -182,7 +182,7 @@ In case of this the log must be checked."
 
       (let ((response-fut (establish-tunnel-connection)))
         (destructuring-bind (resp err)
-            (knxc::await-fut response-fut :attempts 5)
+            (knxc::fawait response-fut :max-time .5)
           (is (null err))
           (is (= (connect-response-status resp)
                  +connect-status-err-conn-type+))))

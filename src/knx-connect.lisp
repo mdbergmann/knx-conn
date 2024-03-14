@@ -98,7 +98,7 @@ Returns a list of the received object and an error condition, if any."
   (:report (lambda (c s)
              (format s "KNX receive error: ~a" (simple-condition-format-control c)))))
 
-(defun await-fut (fut &key (sleep-time 0.1) (max-time 0.5))
+(defun fawait (fut &key (sleep-time 0.1) (max-time 0.5))
   "Wait for the future `FUT` to be ready. Returns VALUES with `result' of the future and `FUT'.
 If the future is not ready after `MAX-TIME` seconds the `result' is `NIL'.
 The `SLEEP-TIME` parameter specifies the time to sleep between checks of the future.
@@ -156,6 +156,13 @@ The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-
 (defvar *received-things* nil)
 
 (defun %receiver-receive (msg)
+  "Allows the folloing messages:
+
+- `(:receive . nil)` to start receiving. The receival itself is done in a separate task. The result of the receival will be enqueued by:
+
+- `(:enqueue . <result>)` to enqueue the result of the receival.
+
+- `(:wait-on-resp-type . (<resp-type> <start-time>))` to wait (by retrying, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + *resp-wait-timeout-secs*` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request."
   (log:debug "Receiver received: ~a" (car msg))
   (let ((self act:*self*)
         (sender act:*sender*))
@@ -180,8 +187,10 @@ The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-
                          (type-of (first result))
                          (second result))
               (! self `(:enqueue . ,result))))))
+        
         (:enqueue
          (push (cdr msg) *received-things*))
+        
         (:wait-on-resp-type
          (destructuring-bind (resp-type start-time) (cdr msg)
            (log:trace "start-time: ~a, current-time: ~a, timeout-time: ~a"
@@ -234,7 +243,7 @@ The error condition will be of type `knx-receive-error` and reflects just an err
     (? *receiver* `(:wait-on-resp-type . (knx-descr-response ,(get-universal-time))))))
 
 (defun establish-tunnel-connection ()
-  "Retrieve the description information from the KNXnet/IP gateway. The response to this request will be received asynchronously.
+  "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
 Returns a future. The result will be a list of the received response and an error condition, if any.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol.
 
