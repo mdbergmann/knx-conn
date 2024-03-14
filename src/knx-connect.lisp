@@ -2,6 +2,10 @@
   (:use :cl :knxutil :knxobj :descr-info :connect :tunnelling
         :hpai :cemi :address :dpt)
   (:nicknames :knxc)
+  (:import-from #:sento.actor
+                #:!
+                #:?
+                #:reply)
   (:export #:connect
            #:disconnect
            ;; send requests
@@ -22,6 +26,7 @@
 
 (defun connect (address &optional (port 3671))
   "Connect to the KNXnet/IP gateway at the given `address` and `port`."
+  (assert (null *conn*) nil "Already connected!")
   (let ((conn (usocket:socket-connect
                address port
                :protocol :datagram
@@ -139,7 +144,7 @@
                    :on-complete-fun
                    (lambda (result)
                      (log:debug "KNX response received: ~a" (type-of result))
-                     (act:! self `(:enqueue . ,result))))))
+                     (! self `(:enqueue . ,result))))))
       (:enqueue (push (cdr msg) *received-things*))
       (:wait-on-resp-type
        (let ((resp-type (cdr msg)))
@@ -149,7 +154,7 @@
                       (tasks:task-start
                        (lambda ()
                          (sleep 0.2)
-                         (act:! self `(:wait-on-resp-type . ,resp-type) sender))))))
+                         (! self `(:wait-on-resp-type . ,resp-type) sender))))))
            (loop
              (let ((thing (pop *received-things*)))
                (unless thing
@@ -160,7 +165,7 @@
                (if (typep thing resp-type)
                    (progn
                      (log:debug "Replying to caller.")
-                     (act:reply thing))
+                     (reply thing))
                    (wait-and-call-again))))))))))
 
 (defun %make-receiver ()
@@ -169,8 +174,9 @@
                                   :name "KNX receiver"
                                   :dispatcher :pinned
                                   :receive (lambda (msg)
-                                             (%receiver-receive msg))))
-    (act:! *receiver* '(:receive . nil))))
+                                             (%receiver-receive msg))
+                                  :init (lambda (self)
+                                          (! self '(:receive . nil)))))))
 
 ;; ---------------------------------
 
@@ -181,8 +187,8 @@
 
 (defun retrieve-descr-info ()
   (let ((req (make-descr-request *hpai-unbound-addr*)))
-    (act:! *sender* req)
-    (act:? *receiver* `(:wait-on-resp-type . knx-descr-response))))
+    (! *sender* req)
+    (? *receiver* `(:wait-on-resp-type . knx-descr-response))))
   
 (defun establish-tunnel-connection ()
   (multiple-value-bind (response err)
