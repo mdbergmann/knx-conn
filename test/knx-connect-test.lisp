@@ -70,8 +70,23 @@
       (is (eql 1 (length (invocations 'usocket:socket-send))))
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
+(test wait-for-response--with-timeout--stop-when-elapsed
+  "Test that when a response is expected but it doesn't come within the
+   specified timeout, the result is timeout condition."
+  (with-fixture env ()
+    (with-mocks ()
+      (answer usocket:socket-send t)
+      (answer usocket:socket-receive (progn
+                                       (sleep 1)
+                                       nil))
+
+      (let ((knxc::*resp-wait-timeout-secs* 0.5)
+            (result-fut (retrieve-descr-info)))
+        (sleep 0.7)
+        (is (eq :timeout (future:fresult result-fut)))))))
+
 ;; TODO:
-;; - wait-on-resp-type with timeout
+;; - retrieve-knx-data with condition
 ;; - :receive with `(cons :handler-error foo)`
 
 

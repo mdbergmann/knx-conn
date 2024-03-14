@@ -130,6 +130,7 @@
 
 ;; receiver
 
+(defvar *resp-wait-timeout-secs* 3 "Timeout for waiting for a response.")
 (defvar *received-things* nil)
 
 (defun %receiver-receive (msg)
@@ -147,14 +148,18 @@
                      (! self `(:enqueue . ,result))))))
       (:enqueue (push (cdr msg) *received-things*))
       (:wait-on-resp-type
-       (let ((resp-type (cdr msg)))
+       (destructuring-bind (resp-type start-time) (cdr msg)
+         (when (> (+ *resp-wait-timeout-secs* (get-universal-time))
+                  start-time)
+           (reply :timeout)
+           (return-from %receiver-receive))
          (log:debug "Checking for response of type: ~a" resp-type)
          (flet ((wait-and-call-again ()
-                    (tasks:with-context (*asys* :waiter)
-                      (tasks:task-start
-                       (lambda ()
-                         (sleep 0.2)
-                         (! self `(:wait-on-resp-type . ,resp-type) sender))))))
+                  (tasks:with-context (*asys* :waiter)
+                    (tasks:task-start
+                     (lambda ()
+                       (sleep 0.2)
+                       (! self `(:wait-on-resp-type . (,resp-type ,start-time)) sender))))))
            (loop
              (let ((thing (pop *received-things*)))
                (unless thing
@@ -188,7 +193,7 @@
 (defun retrieve-descr-info ()
   (let ((req (make-descr-request *hpai-unbound-addr*)))
     (! *sender* req)
-    (? *receiver* `(:wait-on-resp-type . knx-descr-response))))
+    (? *receiver* `(:wait-on-resp-type . (knx-descr-response ,(get-universal-time))))))
   
 (defun establish-tunnel-connection ()
   (multiple-value-bind (response err)
