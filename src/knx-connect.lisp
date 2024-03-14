@@ -147,15 +147,17 @@
                   (sleep 0.2)
                   (! self `(:wait-on-resp-type . (,resp-type ,start-time)) sender))))))
       (case (car msg)
-        (:receive (tasks:with-context (*asys* :receiver)
-                    (tasks:task-async
-                     (lambda ()
-                       (receive-knx-data))
-                     :on-complete-fun
-                     (lambda (result)
-                       (log:debug "KNX response received: ~a" (type-of result))
-                       (! self `(:enqueue . ,result))))))
-        (:enqueue (push (cdr msg) *received-things*))
+        (:receive
+         (tasks:with-context (*asys* :receiver)
+           (tasks:task-async
+            (lambda ()
+              (receive-knx-data))
+            :on-complete-fun
+            (lambda (result)
+              (log:debug "KNX response received: ~a" (type-of result))
+              (! self `(:enqueue . ,result))))))
+        (:enqueue
+         (push (cdr msg) *received-things*))
         (:wait-on-resp-type
          (destructuring-bind (resp-type start-time) (cdr msg)
            (log:debug "start-time: ~a, current-time: ~a, timeout-time: ~a"
