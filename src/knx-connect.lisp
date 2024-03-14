@@ -1,6 +1,6 @@
 (defpackage :knx-conn.knx-connect
   (:use :cl :knxutil :knxobj :descr-info :connect :tunnelling
-        :hpai :cemi :address :dpt)
+        :hpai :cemi :address :dpt :future)
   (:nicknames :knxc)
   (:import-from #:sento.actor
                 #:!
@@ -16,6 +16,8 @@
            #:send-read-request
            ;; receive data
            #:receive-knx-data
+           ;; conditions
+           #:knx-receive-error
            ))
 
 (in-package :knx-conn.knx-connect)
@@ -52,7 +54,8 @@
   request)
 
 (defun receive-knx-data ()
-  "Receive a KNXnet/IP request from the KNXnet/IP gateway."
+  "Receive a KNXnet/IP request from the KNXnet/IP gateway.
+Returns a list of the received object and an error condition, if any."
   (assert *conn* nil "No connection!")
   (let ((buf (make-array 1024 :element-type 'octet)))
     (log:debug "Receiving data...")
@@ -61,13 +64,13 @@
                 (parse-root-knx-object
                  (usocket:socket-receive *conn* buf 1024))))
           (log:debug "Received obj: ~a" received-obj)
-          (values received-obj nil))
+          (list received-obj nil))
       (error (e)
         (log:info "Error: ~a" e)
-        (values nil e))
+        (list nil e))
       (condition (c)
         (log:info "Condition: ~a" c)
-        (values nil c)))))
+        (list nil c)))))
 
 ;; -----------------------------
 ;; high-level comm
@@ -90,6 +93,10 @@
 ;; ---------------------------------
 ;; comunication queues, actors, etc
 ;; ---------------------------------
+
+(define-condition knx-receive-error (simple-error) ()
+  (:report (lambda (c s)
+             (format s "KNX receive error: ~a" (simple-condition-format-control c)))))
 
 (defvar *asys* nil)
 (defvar *sender* nil "actor")
@@ -119,7 +126,7 @@
 
 (defun %sender-receive (msg)
   "`MSG` is request"
-  (log:debug "Sender received: ~a" msg)
+  (log:debug "Sender received: ~a" (type-of msg))
   (send-knx-data msg))
 
 (defun %make-sender ()
@@ -154,39 +161,43 @@
               (receive-knx-data))
             :on-complete-fun
             (lambda (result)
-              (log:debug "KNX response received: ~a" (type-of result))
+              (log:debug "KNX response received: (~a ~a)"
+                         (type-of (first result))
+                         (second result))
               (! self `(:enqueue . ,result))))))
         (:enqueue
          (push (cdr msg) *received-things*))
         (:wait-on-resp-type
          (destructuring-bind (resp-type start-time) (cdr msg)
-           (log:debug "start-time: ~a, current-time: ~a, timeout-time: ~a"
+           (log:trace "start-time: ~a, current-time: ~a, timeout-time: ~a"
                       start-time
                       (get-universal-time)
                       (+ *resp-wait-timeout-secs* start-time))
            (when (timeout-elapsed-p start-time)
              (log:debug "Time elapsed waiting for response of type: ~a" resp-type)
-             (reply `(:timeout . ,(format nil "Waiting for response: ~a" resp-type)))
+             (reply (list nil (make-condition
+                               'knx-receive-error
+                               :format-control
+                               (format nil
+                                       "Timeout waiting for response of type ~a" resp-type))))
              (return-from %receiver-receive))
-           (log:debug "Checking for response of type: ~a" resp-type)
+           (log:trace "Checking for response of type: ~a" resp-type)
            (loop
              (let ((thing (pop *received-things*)))
                (unless thing
-                 (log:debug "No thing received yet")
+                 (log:trace "No thing received yet")
                  (wait-and-call-again resp-type start-time)
                  (return))
-               (log:debug "Popped thing of type: ~a" (type-of thing))
-               (if (typep thing resp-type)
-                   (progn
-                     (log:debug "Replying to caller.")
-                     (reply thing))
-                   (wait-and-call-again resp-type start-time))))))))))
+               (destructuring-bind (response err) thing
+                 (log:debug "Popped thing: (resp:~a err:~a)" (type-of response) err)
+                 (if (typep response resp-type)
+                     (reply thing)
+                     (wait-and-call-again resp-type start-time)))))))))))
 
 (defun %make-receiver ()
   (unless *receiver*
     (setf *receiver* (ac:actor-of *asys*
                                   :name "KNX receiver"
-                                  :dispatcher :pinned
                                   :receive (lambda (msg)
                                              (%receiver-receive msg))
                                   :init (lambda (self)
@@ -203,14 +214,22 @@
   (let ((req (make-descr-request *hpai-unbound-addr*)))
     (! *sender* req)
     (? *receiver* `(:wait-on-resp-type . (knx-descr-response ,(get-universal-time))))))
-  
+
 (defun establish-tunnel-connection ()
-  (multiple-value-bind (response err)
-      (%with-request-response (make-connect-request))
-    (when response
-      (setf *channel-id*
-            (connect-response-channel-id response)))
-    (values response err)))
+  (let ((req (make-connect-request)))
+    (! *sender* req)
+    (let ((fut
+            (? *receiver* `(:wait-on-resp-type . (knx-connect-response ,(get-universal-time))))))
+      (fcompleted fut
+          (result)
+        (destructuring-bind (response _err) result
+          (declare (ignore _err))
+          (when response
+            (log:info "Tunnel connection established.")
+            (log:info "Channel-id: ~a" (connect-response-channel-id response))
+            (setf *channel-id*
+                  (connect-response-channel-id response)))))
+      fut)))
 
 (defun close-tunnel-connection ()
   (%assert-channel-id)

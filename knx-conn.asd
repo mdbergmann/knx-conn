@@ -39,6 +39,7 @@
                  (:file "address-test")
                  (:file "cemi-test")
                  (:file "dpt-test")
+                 (:file "descr-info-test")
                  (:file "connect-test")
                  (:file "tunnelling-test")
                  (:file "knx-connect-test")

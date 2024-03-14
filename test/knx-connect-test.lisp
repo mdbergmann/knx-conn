@@ -16,14 +16,16 @@
 (log:config '(sento) :warn)
 
 (def-fixture env ()
-  (let ((resp-wait-timeout-store knxc::*resp-wait-timeout-secs*))
+  (let ((resp-wait-timeout-store knxc::*resp-wait-timeout-secs*)
+        (channel-id knxc::*channel-id*))
     (unwind-protect
          (progn
            (knxc::%ensure-asys)
            (&body))
       (progn
         (knxc::%shutdown-asys)
-        (setf knxc::*resp-wait-timeout-secs* resp-wait-timeout-store)))))
+        (setf knxc::*resp-wait-timeout-secs* resp-wait-timeout-store)
+        (setf knxc::*channel-id* channel-id)))))
 
 ;; --------------------------------------
 ;; description request/response
@@ -45,31 +47,32 @@
       (answer usocket:socket-send t)
       (answer usocket:socket-receive *descr-response-data*)
 
-      (let ((result-fut (retrieve-descr-info))
-            (result))
+      (let ((result-fut (retrieve-descr-info)))
         (await-cond 0.5
           (not (eq :not-ready (future:fresult result-fut))))
-        (setf result (future:fresult result-fut))
-        (is (typep result 'knx-descr-response))
-        ;; check knx-header
-        (let ((header (package-header result)))
-          (is (typep header 'knx-header))
-          (is (eql knxobj::+knx-header-len+ (header-len header)))
-          (is (eql descr-info::+knx-descr-response+ (header-type header)))
-          (is (eql knxobj::+knx-netip-version+ (header-knxnetip-version header)))
-          (is (eql (- 84 knxobj::+knx-header-len+) (header-body-len header))))
-        ;; check dibs
-        (is (typep (descr-response-device-hardware result)
-                   'dib))
-        (is (typep (descr-response-device-hardware result)
-                   'dib-device-info))
-        (is (typep (descr-response-supp-svc-families result)
-                   'dib))
-        (is (typep (descr-response-supp-svc-families result)
-                   'dib-supp-svc-families))
-        (is (typep (descr-response-other-dib-info result)
-                   'dib-list))
-        (is-false (endp (descr-response-other-dib-info result))))
+        (destructuring-bind (result err)
+            (future:fresult result-fut)
+          (is (eq nil err))
+          (is (typep result 'knx-descr-response))
+          ;; check knx-header
+          (let ((header (package-header result)))
+            (is (typep header 'knx-header))
+            (is (eql knxobj::+knx-header-len+ (header-len header)))
+            (is (eql descr-info::+knx-descr-response+ (header-type header)))
+            (is (eql knxobj::+knx-netip-version+ (header-knxnetip-version header)))
+            (is (eql (- 84 knxobj::+knx-header-len+) (header-body-len header))))
+          ;; check dibs
+          (is (typep (descr-response-device-hardware result)
+                     'dib))
+          (is (typep (descr-response-device-hardware result)
+                     'dib-device-info))
+          (is (typep (descr-response-supp-svc-families result)
+                     'dib))
+          (is (typep (descr-response-supp-svc-families result)
+                     'dib-supp-svc-families))
+          (is (typep (descr-response-other-dib-info result)
+                     'dib-list))
+          (is-false (endp (descr-response-other-dib-info result)))))
 
       (is (eql 1 (length (invocations 'usocket:socket-send))))
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
@@ -87,8 +90,12 @@
       (setf knxc::*resp-wait-timeout-secs* 1)
       (let ((result-fut (retrieve-descr-info)))
         (sleep 2.0)
-        (is (equalp `(:timeout . "Waiting for response: KNX-DESCR-RESPONSE")
-                    (future:fresult result-fut)))))))
+        (destructuring-bind (result err)
+            (future:fresult result-fut)
+          (is (null result))
+          (is (typep err 'knx-receive-error))
+          (is (equal (format nil "~a" err)
+                     (format nil "KNX receive error: Timeout waiting for response of type KNX-DESCR-RESPONSE"))))))))
 
 (test wait-for-response--error-on-response-parsing
   "This also returns `:timeout` because the response couldn't be parsed correctly
@@ -99,58 +106,66 @@ In case of this the log must be checked."
       (answer usocket:socket-send t)
       (answer usocket:socket-receive (error "foo"))
 
-      (setf knxc::*resp-wait-timeout-secs* 0.5)
+      (setf knxc::*resp-wait-timeout-secs* 0)
       (let ((result-fut (retrieve-descr-info)))
-        (await-cond 1.5
+        (await-cond 2.0
           (not (eq :not-ready (future:fresult result-fut))))
-        (is (equalp `(:timeout . "Waiting for response: KNX-DESCR-RESPONSE")
-                    (future:fresult result-fut)))))))
+        (destructuring-bind (result err)
+            (future:fresult result-fut)
+          (is (null result))
+          (is (typep err 'knx-receive-error)))))))
 
 ;; ;; --------------------------------------
 ;; ;; connect request/response
 ;; ;; --------------------------------------
 
-;; (defparameter *connect-response-data-ok*
-;;   #(6 16 2 6 0 20 78 0 8 1 0 0 0 0 0 0 4 4 238 255 0 0 0 0 0 0 0 0
-;;     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-;;     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-;;     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
+(defparameter *connect-response-data-ok*
+  #(6 16 2 6 0 20 78 0 8 1 0 0 0 0 0 0 4 4 238 255 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
 
-;; (test connect--ok
-;;   (with-mocks ()
-;;     (answer usocket:socket-send t)
-;;     (answer usocket:socket-receive *connect-response-data-ok*)
+(test connect--ok
+  (with-fixture env ()
+    (with-mocks ()
+      (answer usocket:socket-send t)
+      (answer usocket:socket-receive *connect-response-data-ok*)
 
-;;     (let ((knxc::*channel-id* 0))
-;;       (multiple-value-bind (response err)
-;;           (establish-tunnel-connection)
-;;         (is (eq nil err))
-;;         (is (typep response 'knx-connect-response))
-;;         ;; check knx-header
-;;         (let ((header (package-header response)))
-;;           (is (typep header 'knx-header)))
-;;         ;; check connect response body
-;;         (is (eql +connect-status-no-error+ (connect-response-status response)))
-;;         (is (eql 78 (connect-response-channel-id response)))
-;;         (is (equal (address-string-rep
-;;                     (crd:crd-individual-address
-;;                      (connect-response-crd response)))
-;;                    "14.14.255")))
+      (let ((knxc::*channel-id* 0))
+        (let ((result-fut (establish-tunnel-connection)))
+          (await-cond 0.5
+            (not (eq :not-ready (future:fresult result-fut))))
+          (destructuring-bind (response err)
+              (future:fresult result-fut)          
+            (is (eq nil err))
+            (is (typep response 'knx-connect-response))
+            ;; check knx-header
+            (let ((header (package-header response)))
+              (is (typep header 'knx-header)))
+            ;; check connect response body
+            (is (eql +connect-status-no-error+ (connect-response-status response)))
+            (is (eql 78 (connect-response-channel-id response)))
+            (is (equal (address-string-rep
+                        (crd:crd-individual-address
+                         (connect-response-crd response)))
+                       "14.14.255")))))
     
-;;       (is (eql 1 (length (invocations 'usocket:socket-send))))
-;;       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
+      (is (eql 1 (length (invocations 'usocket:socket-send))))
+      (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
-;; (test connect--ok--sets-channel-id
-;;   (with-mocks ()
-;;     (answer usocket:socket-send t)
-;;     (answer usocket:socket-receive *connect-response-data-ok*)
+(test connect--ok--sets-channel-id
+  (with-fixture env ()
+    (with-mocks ()
+      (answer usocket:socket-send t)
+      (answer usocket:socket-receive *connect-response-data-ok*)
 
-;;     (let ((knxc::*channel-id* -1))
-;;       (establish-tunnel-connection)
-;;       (is (= knxc::*channel-id* 78)))
+      (setf knxc::*channel-id* -1)
+      (establish-tunnel-connection)
+      (is-true (await-cond 0.5
+                 (= knxc::*channel-id* 78)))
     
-;;     (is (eql 1 (length (invocations 'usocket:socket-send))))
-;;     (is (eql 1 (length (invocations 'usocket:socket-receive))))))
+      (is (eql 1 (length (invocations 'usocket:socket-send))))
+      (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
 ;; (defparameter *connect-response-data-err*
 ;;   #(6 16 2 6 0 20 78 34 8 1 0 0 0 0 0 0 4 4 238 255 0 0 0 0 0 0 0 0
