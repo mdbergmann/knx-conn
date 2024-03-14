@@ -16,11 +16,14 @@
 (log:config '(sento) :warn)
 
 (def-fixture env ()
-  (unwind-protect
-       (progn
-         (knxc::%ensure-asys)
-         (&body))
-    (knxc::%shutdown-asys)))
+  (let ((resp-wait-timeout-store knxc::*resp-wait-timeout-secs*))
+    (unwind-protect
+         (progn
+           (knxc::%ensure-asys)
+           (&body))
+      (progn
+        (knxc::%shutdown-asys)
+        (setf knxc::*resp-wait-timeout-secs* resp-wait-timeout-store)))))
 
 ;; --------------------------------------
 ;; description request/response
@@ -78,13 +81,14 @@
     (with-mocks ()
       (answer usocket:socket-send t)
       (answer usocket:socket-receive (progn
-                                       (sleep 1)
+                                       (sleep 2.0)
                                        nil))
 
-      (let ((knxc::*resp-wait-timeout-secs* 0.5)
-            (result-fut (retrieve-descr-info)))
-        (sleep 0.7)
-        (is (eq :timeout (future:fresult result-fut)))))))
+      (setf knxc::*resp-wait-timeout-secs* 1)
+      (let ((result-fut (retrieve-descr-info)))
+        (sleep 2.0)
+        (is (equalp `(:timeout . "Waiting for response: KNX-DESCR-RESPONSE")
+                    (future:fresult result-fut)))))))
 
 (test wait-for-response--error-on-response-parsing
   "This also returns `:timeout` because the response couldn't be parsed correctly
@@ -95,30 +99,32 @@ In case of this the log must be checked."
       (answer usocket:socket-send t)
       (answer usocket:socket-receive (error "foo"))
 
+      (setf knxc::*resp-wait-timeout-secs* 0.5)
       (let ((result-fut (retrieve-descr-info)))
-        (await-cond 0.5
+        (await-cond 1.5
           (not (eq :not-ready (future:fresult result-fut))))
-        (is (eq :timeout (future:fresult result-fut)))))))
+        (is (equalp `(:timeout . "Waiting for response: KNX-DESCR-RESPONSE")
+                    (future:fresult result-fut)))))))
 
 
-;; (defparameter *raw-descr-request*
-;;   (make-array 14
-;;               :element-type '(unsigned-byte 8)
-;;               :initial-contents
-;;               '(#x06 #x10
-;;                 #x02 #x03
-;;                 #x00 #x0e
-;;                 ;; HPAI
-;;                 #x08
-;;                 #x01                ;; udp
-;;                 #x00 #x00 #x00 #x00 ;; unbound address
-;;                 #x00 #x00
-;;                 )))
+(defparameter *raw-descr-request*
+  (make-array 14
+              :element-type '(unsigned-byte 8)
+              :initial-contents
+              '(#x06 #x10
+                #x02 #x03
+                #x00 #x0e
+                ;; HPAI
+                #x08
+                #x01                ;; udp
+                #x00 #x00 #x00 #x00 ;; unbound address
+                #x00 #x00
+                )))
 
-;; (test descr-request--compare-to-raw
-;;   (is (equalp *raw-descr-request*
-;;               (to-byte-seq
-;;                (make-descr-request hpai:*hpai-unbound-addr*)))))
+(test descr-request--compare-to-raw
+  (is (equalp *raw-descr-request*
+              (to-byte-seq
+               (make-descr-request hpai:*hpai-unbound-addr*)))))
 
 ;; (defparameter *raw-descr-request-2*
 ;;   (make-array 14

@@ -137,11 +137,9 @@
   (log:debug "Receiver received: ~a" (car msg))
   (let ((self act:*self*)
         (sender act:*sender*))
-    (flet ((check-time-elapsed-p (start-time)
-             (when (> (+ *resp-wait-timeout-secs* (get-universal-time))
-                      start-time)
-               (reply :timeout)
-               (return-from %receiver-receive)))
+    (flet ((timeout-elapsed-p (start-time)
+             (> (get-universal-time)
+                (+ *resp-wait-timeout-secs* start-time)))
            (wait-and-call-again (resp-type start-time)
              (tasks:with-context (*asys* :waiter)
                (tasks:task-start
@@ -160,7 +158,14 @@
         (:enqueue (push (cdr msg) *received-things*))
         (:wait-on-resp-type
          (destructuring-bind (resp-type start-time) (cdr msg)
-           (check-time-elapsed-p start-time)
+           (log:debug "start-time: ~a, current-time: ~a, timeout-time: ~a"
+                      start-time
+                      (get-universal-time)
+                      (+ *resp-wait-timeout-secs* start-time))
+           (when (timeout-elapsed-p start-time)
+             (log:debug "Time elapsed waiting for response of type: ~a" resp-type)
+             (reply `(:timeout . ,(format nil "Waiting for response: ~a" resp-type)))
+             (return-from %receiver-receive))
            (log:debug "Checking for response of type: ~a" resp-type)
            (loop
              (let ((thing (pop *received-things*)))
