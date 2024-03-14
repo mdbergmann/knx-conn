@@ -1,6 +1,7 @@
 (defpackage :knx-conn.knx-connect-test
   (:use :cl :cl-mock :fiveam
    :knxutil :knxobj :descr-info :connect :tunnelling
+   :sento.miscutils
         :crd :cemi :address :dib :dpt :knxc))
 
 (in-package :knx-conn.knx-connect-test)
@@ -43,7 +44,7 @@
 
       (let ((result-fut (retrieve-descr-info))
             (result))
-        (miscutils:await-cond 0.5
+        (await-cond 0.5
           (not (eq :not-ready (future:fresult result-fut))))
         (setf result (future:fresult result-fut))
         (is (typep result 'knx-descr-response))
@@ -85,9 +86,19 @@
         (sleep 0.7)
         (is (eq :timeout (future:fresult result-fut)))))))
 
-;; TODO:
-;; - check error for retrieve-knx-data with condition
-;; - :receive with `(cons :handler-error foo)`
+(test wait-for-response--error-on-response-parsing
+  "This also returns `:timeout` because the response couldn't be parsed correctly
+and so it is not possible to determine if it is the wanted response or not.
+In case of this the log must be checked."
+  (with-fixture env ()
+    (with-mocks ()
+      (answer usocket:socket-send t)
+      (answer usocket:socket-receive (error "foo"))
+
+      (let ((result-fut (retrieve-descr-info)))
+        (await-cond 0.5
+          (not (eq :not-ready (future:fresult result-fut))))
+        (is (eq :timeout (future:fresult result-fut)))))))
 
 
 ;; (defparameter *raw-descr-request*
