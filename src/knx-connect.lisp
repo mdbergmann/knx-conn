@@ -137,41 +137,43 @@
   (log:debug "Receiver received: ~a" (car msg))
   (let ((self act:*self*)
         (sender act:*sender*))
-    (case (car msg)
-      (:receive (tasks:with-context (*asys* :receiver)
-                  (tasks:task-async
-                   (lambda ()
-                     (receive-knx-data))
-                   :on-complete-fun
-                   (lambda (result)
-                     (log:debug "KNX response received: ~a" (type-of result))
-                     (! self `(:enqueue . ,result))))))
-      (:enqueue (push (cdr msg) *received-things*))
-      (:wait-on-resp-type
-       (destructuring-bind (resp-type start-time) (cdr msg)
-         (when (> (+ *resp-wait-timeout-secs* (get-universal-time))
-                  start-time)
-           (reply :timeout)
-           (return-from %receiver-receive))
-         (log:debug "Checking for response of type: ~a" resp-type)
-         (flet ((wait-and-call-again ()
-                  (tasks:with-context (*asys* :waiter)
-                    (tasks:task-start
+    (flet ((check-time-elapsed-p (start-time)
+             (when (> (+ *resp-wait-timeout-secs* (get-universal-time))
+                      start-time)
+               (reply :timeout)
+               (return-from %receiver-receive)))
+           (wait-and-call-again (resp-type start-time)
+             (tasks:with-context (*asys* :waiter)
+               (tasks:task-start
+                (lambda ()
+                  (sleep 0.2)
+                  (! self `(:wait-on-resp-type . (,resp-type ,start-time)) sender))))))
+      (case (car msg)
+        (:receive (tasks:with-context (*asys* :receiver)
+                    (tasks:task-async
                      (lambda ()
-                       (sleep 0.2)
-                       (! self `(:wait-on-resp-type . (,resp-type ,start-time)) sender))))))
+                       (receive-knx-data))
+                     :on-complete-fun
+                     (lambda (result)
+                       (log:debug "KNX response received: ~a" (type-of result))
+                       (! self `(:enqueue . ,result))))))
+        (:enqueue (push (cdr msg) *received-things*))
+        (:wait-on-resp-type
+         (destructuring-bind (resp-type start-time) (cdr msg)
+           (check-time-elapsed-p start-time)
+           (log:debug "Checking for response of type: ~a" resp-type)
            (loop
              (let ((thing (pop *received-things*)))
                (unless thing
                  (log:debug "No thing received yet")
-                 (wait-and-call-again)
+                 (wait-and-call-again resp-type start-time)
                  (return))
                (log:debug "Popped thing of type: ~a" (type-of thing))
                (if (typep thing resp-type)
                    (progn
                      (log:debug "Replying to caller.")
                      (reply thing))
-                   (wait-and-call-again))))))))))
+                   (wait-and-call-again resp-type start-time))))))))))
 
 (defun %make-receiver ()
   (unless *receiver*

@@ -86,7 +86,7 @@
         (is (eq :timeout (future:fresult result-fut)))))))
 
 ;; TODO:
-;; - retrieve-knx-data with condition
+;; - check error for retrieve-knx-data with condition
 ;; - :receive with `(cons :handler-error foo)`
 
 
