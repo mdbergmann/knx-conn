@@ -35,4 +35,3 @@
     (is (= (connect::disconnect-response-channel-id resp) 0))
     (is (= (connect::disconnect-response-status resp) 0))))
 
-

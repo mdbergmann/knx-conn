@@ -167,28 +167,28 @@ In case of this the log must be checked."
       (is (eql 1 (length (invocations 'usocket:socket-send))))
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
-;; (defparameter *connect-response-data-err*
-;;   #(6 16 2 6 0 20 78 34 8 1 0 0 0 0 0 0 4 4 238 255 0 0 0 0 0 0 0 0
-;;     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-;;     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-;;     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
-;;   "Connect response with error status")
+(defparameter *connect-response-data-err*
+  #(6 16 2 6 0 20 78 34 8 1 0 0 0 0 0 0 4 4 238 255 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
+  "Connect response with error status")
 
-;; (test connect--err
-;;   (with-mocks ()
-;;     (answer usocket:socket-send t)
-;;     (answer usocket:socket-receive *connect-response-data-err*)
+(test connect--err
+  (with-fixture env ()
+    (with-mocks ()
+      (answer usocket:socket-send t)
+      (answer usocket:socket-receive *connect-response-data-err*)
 
-;;     (multiple-value-bind (response err)
-;;         (establish-tunnel-connection)
-;;       (is (null response))
-;;       (is (equal (format nil "~a" err)
-;;                  (format nil
-;;                          "Error condition: Connect response status, args: (~a)"
-;;                          +connect-status-err-conn-type+))))
+      (let ((response-fut (establish-tunnel-connection)))
+        (destructuring-bind (resp err)
+            (knxc::await-fut response-fut :attempts 5)
+          (is (null err))
+          (is (= (connect-response-status resp)
+                 +connect-status-err-conn-type+))))
     
-;;     (is (eql 1 (length (invocations 'usocket:socket-send))))
-;;     (is (eql 1 (length (invocations 'usocket:socket-receive))))))
+      (is (eql 1 (length (invocations 'usocket:socket-send))))
+      (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
 ;; (test connect--err--does-not-set-channel-id
 ;;   (with-mocks ()

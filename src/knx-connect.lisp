@@ -98,6 +98,21 @@ Returns a list of the received object and an error condition, if any."
   (:report (lambda (c s)
              (format s "KNX receive error: ~a" (simple-condition-format-control c)))))
 
+(defun await-fut (fut &key (sleep-time 0.1) (max-time 0.5))
+  "Wait for the future `FUT` to be ready. Returns VALUES with `result' of the future and `FUT'.
+If the future is not ready after `MAX-TIME` seconds the `result' is `NIL'.
+The `SLEEP-TIME` parameter specifies the time to sleep between checks of the future.
+The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-TIME` should be a divisor of `MAX-TIME`."
+  (let* ((attempts (truncate max-time sleep-time))
+         (result
+           (loop :repeat attempts
+                 :do
+                    (let ((result (fresult fut)))
+                      (unless (eq result :not-ready)
+                        (return result))
+                      (sleep sleep-time)))))
+    (values result fut)))
+
 (defvar *asys* nil)
 (defvar *sender* nil "actor")
 (defvar *receiver* nil "actor")
@@ -211,11 +226,19 @@ Returns a list of the received object and an error condition, if any."
      (receive-knx-data)))
 
 (defun retrieve-descr-info ()
+  "Retrieve the description information from the KNXnet/IP gateway. The response to this request will be received asynchronously.
+Returns a future. The result will be a list of the received response and an error condition, if any.
+The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol."
   (let ((req (make-descr-request *hpai-unbound-addr*)))
     (! *sender* req)
     (? *receiver* `(:wait-on-resp-type . (knx-descr-response ,(get-universal-time))))))
 
 (defun establish-tunnel-connection ()
+  "Retrieve the description information from the KNXnet/IP gateway. The response to this request will be received asynchronously.
+Returns a future. The result will be a list of the received response and an error condition, if any.
+The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol.
+
+If the connection is established successfully, the channel-id will be stored in the global variable `*channel-id*`."
   (let ((req (make-connect-request)))
     (! *sender* req)
     (let ((fut
@@ -225,10 +248,16 @@ Returns a list of the received object and an error condition, if any."
         (destructuring-bind (response _err) result
           (declare (ignore _err))
           (when response
-            (log:info "Tunnel connection established.")
-            (log:info "Channel-id: ~a" (connect-response-channel-id response))
-            (setf *channel-id*
-                  (connect-response-channel-id response)))))
+            (let ((status (connect-response-status response)))
+              (if (not (eql status 0))
+                  (log:warn "Tunnel connection failed, status: ~a" status)
+                  (progn
+                    (log:info "Tunnel connection established.")
+                    (log:info "Channel-id: ~a" (connect-response-channel-id response))
+                    (setf *channel-id*
+                          (connect-response-channel-id response))))))
+          (unless response
+            (log:warn "No response received."))))
       fut)))
 
 (defun close-tunnel-connection ()

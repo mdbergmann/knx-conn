@@ -98,14 +98,9 @@ KNXnet/IP body
   (hpai (error "hpai required!") :type hpai)
   (crd (error "crd required!") :type crd))
 
-
 (defmethod parse-to-obj ((obj-type (eql +knx-connect-response+)) header body)
   (let ((channel-id (aref body 0))
         (status (aref body 1)))
-    (unless (eql status 0)
-      (error 'knx-error-condition
-             :format-control "Connect response status"
-             :format-arguments (list status)))
     (%make-connect-response
      :header header
      :channel-id channel-id
