@@ -1,6 +1,7 @@
 (defpackage :knx-conn.knx-connect
   (:use :cl :knxutil :knxobj :descr-info :connect :tunnelling
-        :hpai :cemi :address :dpt :future)
+        :hpai :cemi :address :dpt
+        :sento.future)
   (:nicknames :knxc)
   (:import-from #:sento.actor
                 #:!
@@ -25,6 +26,10 @@
 (in-package :knx-conn.knx-connect)
 
 (defparameter *knx-if* "192.168.50.41")
+
+;; -----------------------------
+;; low-level communication (UDP)
+;; -----------------------------
 
 (defvar *conn* nil)
 
@@ -75,25 +80,11 @@ Returns a list of the received object and an error condition, if any."
         `(nil ,c)))))
 
 ;; -----------------------------
-;; high-level comm
+;; helpers and vars
 ;; -----------------------------
 
-(defvar *channel-id* nil
-  "The channel-id of the current tunnelling connection.")
-
-(defun %assert-channel-id ()
-  (assert (integerp *channel-id*)
-          nil "No open connection!"))
-
-(defvar *seq-counter* 0
-  "The sequence counter for the current tunnelling connection.")
-
-(defun %next-seq-counter ()
-  (setf *seq-counter* (mod (1+ *seq-counter*) 255)))
-
-
 ;; ---------------------------------
-;; comunication queues, actors, etc
+;; communication queues, actors, etc
 ;; ---------------------------------
 
 (define-condition knx-receive-error (simple-error) ()
@@ -143,7 +134,9 @@ Make sure that the function is not doing lon-running operations or else spawn a 
   (log:info "Registering listener...")
   (push listener-fun *tunnel-request-listeners*))
 
+;; ---------------------------------
 ;; async-handler
+;; ---------------------------------
 
 (defvar *resp-wait-timeout-secs* 3 "Timeout for waiting for a response.")
 (defvar *received-things* nil)
@@ -246,6 +239,22 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
   (! *async-handler* '(:receive . nil)))
 
 ;; ---------------------------------
+;; knx management functions
+;; ---------------------------------
+
+(defvar *channel-id* nil
+  "The channel-id of the current tunnelling connection.")
+
+(defun %assert-channel-id ()
+  (assert (integerp *channel-id*)
+          nil "No open connection!"))
+
+(defvar *seq-counter* 0
+  "The sequence counter for the current tunnelling connection.")
+
+(defun %next-seq-counter ()
+  (setf *seq-counter* (mod (1+ *seq-counter*) 255)))
+
 
 (defun %handle-response-fut (fut handle-fun)
   (fcompleted fut
