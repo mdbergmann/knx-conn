@@ -267,7 +267,7 @@ In case of this the log must be checked."
   (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
-      ;; receiver is running in parallel, unused here
+      ;; receiver is running in parallel, so we'll have to return something
       (answer usocket:socket-receive #())
       
       (setf knxc::*channel-id* 78)

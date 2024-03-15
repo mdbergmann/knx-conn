@@ -153,9 +153,10 @@ Make sure that the function is not doing lon-running operations or else spawn a 
 
 - `(:send . <request>)` to send a request.
 
-- `(:receive . nil)` to start receiving. The receival itself is done in a separate task. The result of the receival will be enqueued by:
+- `(:receive . nil)` to start receiving. The receival itself is done in a separate task (sento.tasks API). The result of the receival is forwarded to:
 
-- `(:received . <result>)` looks as what is the type of the received. For `knx-tunnelling-request`s the registered listeber function will be called. All else will be enqueued in the `*received-things*` list
+- `(:received . <result>)` looks at what is the type of the received.
+For `knx-tunnelling-request`s the registered listener functions will be called. All else will be enqueued in the `*received-things*` list, for `:wait-on-resp-type` to check.
 
 - `(:wait-on-resp-type . (<resp-type> <start-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + *resp-wait-timeout-secs*` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request."
   (destructuring-bind (msg-sym . args) msg
