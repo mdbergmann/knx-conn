@@ -91,7 +91,7 @@
       (let ((result-fut (retrieve-descr-info)))
         (sleep 2.0)
         (destructuring-bind (result err)
-            (future:fresult result-fut)
+            (fawait result-fut :timeout 1)
           (is (null result))
           (is (typep err 'knx-receive-error))
           (is (equal (format nil "~a" err)
@@ -108,10 +108,8 @@ In case of this the log must be checked."
 
       (setf knxc::*resp-wait-timeout-secs* 0)
       (let ((result-fut (retrieve-descr-info)))
-        (await-cond 2.0
-          (not (eq :not-ready (future:fresult result-fut))))
         (destructuring-bind (result err)
-            (future:fresult result-fut)
+            (fawait result-fut :timeout 2)
           (is (null result))
           (is (typep err 'knx-receive-error)))))))
 
@@ -133,10 +131,8 @@ In case of this the log must be checked."
 
       (let ((knxc::*channel-id* 0))
         (let ((result-fut (establish-tunnel-connection)))
-          (await-cond 0.5
-            (not (eq :not-ready (future:fresult result-fut))))
           (destructuring-bind (response err)
-              (future:fresult result-fut)          
+              (fawait result-fut :timeout .5)
             (is (eq nil err))
             (is (typep response 'knx-connect-response))
             ;; check knx-header
@@ -219,7 +215,7 @@ In case of this the log must be checked."
       (setf knxc::*channel-id* 78)
       (destructuring-bind (response err)
           (fawait (close-tunnel-connection) :timeout 1)
-        (is (eq nil err))
+        (is (null err))
         (is (typep response 'knx-disconnect-response))
         (is (null knxc::*channel-id*)))
       
