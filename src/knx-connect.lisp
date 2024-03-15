@@ -124,7 +124,9 @@ Returns a list of the received object and an error condition, if any."
   (when *async-handler*
     (setf *async-handler* nil))
   (when *tunnel-request-listeners*
-    (setf *tunnel-request-listeners* nil)))
+    (setf *tunnel-request-listeners* nil))
+  (when *received-things*
+    (setf *received-things* nil)))
 
 (defun %assert-async-handler ()
   (assert *asys* nil "No actor system!")
@@ -185,10 +187,11 @@ Make sure that the function is not doing lon-running operations or else spawn a 
                     (lambda ()
                       (receive-knx-data))
                     (lambda (result)
-                      (log:debug "KNX response received: (~a ~a)"
-                                 (type-of (first result))
-                                 (second result))
-                      (! self `(:received . ,result)))))
+                      (when (and result (car result))
+                        (log:debug "KNX response received: (~a ~a)"
+                                   (type-of (first result))
+                                   (second result))
+                        (! self `(:received . ,result))))))
 
           (:received
            (destructuring-bind (received err) args
@@ -196,8 +199,10 @@ Make sure that the function is not doing lon-running operations or else spawn a 
              (log:debug "Received: ~a" (type-of received))
              (typecase received
                (knx-tunnelling-request
-                (dolist (listener-fun *tunnel-request-listeners*)
-                  (funcall listener-fun received)))
+                (progn
+                  (log:debug "Notifying listeners of received tunnelling request...")
+                  (dolist (listener-fun *tunnel-request-listeners*)
+                    (funcall listener-fun received))))
                (t
                 (progn
                   (log:debug "Enqueuing: ~a" received)
@@ -310,19 +315,21 @@ If the connection is established successfully, the channel-id will be stored in 
 ;; ---------------------------------
 
 (defun send-write-request (group-address dpt)
-  "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set."
+  "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
+Returns the request that was sent."
   (check-type group-address knx-group-address)
   (check-type dpt dpt)
   (%assert-channel-id)
-  (send-knx-data
-   (make-tunnelling-request
-    :channel-id *channel-id*
-    :seq-counter (%next-seq-counter)
-    :cemi (make-default-cemi
-           :message-code +cemi-mc-l_data.req+
-           :dest-address group-address
-           :apci (make-apci-gv-write)
-           :dpt dpt))))
+  (let ((req (make-tunnelling-request
+                          :channel-id *channel-id*
+                          :seq-counter (%next-seq-counter)
+                          :cemi (make-default-cemi
+                                 :message-code +cemi-mc-l_data.req+
+                                 :dest-address group-address
+                                 :apci (make-apci-gv-write)
+                                 :dpt dpt))))
+    (! *async-handler* `(:send . ,req))
+    req))
 
 (defun send-read-request (group-address)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously."

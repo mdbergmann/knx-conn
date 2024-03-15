@@ -263,19 +263,20 @@ In case of this the log must be checked."
 ;; ;; tunneling request sending
 ;; ;; --------------------------------------
 
-;; ;; reset this
-;; (setf knxc::*channel-id* nil)
-;; (setf knxc::*seq-counter* 0)
-
-;; (test send-write-request--switch-on
-;;   (with-mocks ()
-;;     (answer usocket:socket-send t)
-;;     (let ((knxc::*channel-id* 78))
-;;       (let ((req (send-write-request (make-group-address "0/4/10")
-;;                                      (make-dpt1 :switch :on))))
-;;         (is (= 78 (conn-header-channel-id
-;;                    (tunnelling-request-conn-header req))))))
-;;     (is (= 1 (length (invocations 'usocket:socket-send))))))
+(test send-write-request--switch-on
+  (with-fixture env (nil)
+    (with-mocks ()
+      (answer usocket:socket-send t)
+      ;; receiver is running in parallel, unused here
+      (answer usocket:socket-receive #())
+      
+      (setf knxc::*channel-id* 78)
+      (let ((req (send-write-request (make-group-address "0/4/10")
+                                     (make-dpt1 :switch :on))))
+        (is (= 78 (conn-header-channel-id
+                   (tunnelling-request-conn-header req)))))
+      (is-true (await-cond 0.5
+                 (= 1 (length (invocations 'usocket:socket-send))))))))
 
 ;; (test send-write-request--increment-seq-counter
 ;;   (with-mocks ()
