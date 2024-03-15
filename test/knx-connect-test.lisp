@@ -182,13 +182,17 @@ In case of this the log must be checked."
 
       (let ((response-fut (establish-tunnel-connection)))
         (destructuring-bind (resp err)
-            (knxc::fawait response-fut :max-time .5)
+            (knxc::fawait response-fut :timeout .5)
           (is (null err))
           (is (= (connect-response-status resp)
                  +connect-status-err-conn-type+))))
     
       (is (eql 1 (length (invocations 'usocket:socket-send))))
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
+
+;; TODOS:
+;; - need *sender*?
+;; - extract receive-handlers to separate functions.
 
 ;; (test connect--err--does-not-set-channel-id
 ;;   (with-mocks ()

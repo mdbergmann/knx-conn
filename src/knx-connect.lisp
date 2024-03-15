@@ -98,12 +98,12 @@ Returns a list of the received object and an error condition, if any."
   (:report (lambda (c s)
              (format s "KNX receive error: ~a" (simple-condition-format-control c)))))
 
-(defun fawait (fut &key (sleep-time 0.1) (max-time 0.5))
+(defun fawait (fut &key (timeout 0.5) (sleep-time 0.1))
   "Wait for the future `FUT` to be ready. Returns VALUES with `result' of the future and `FUT'.
-If the future is not ready after `MAX-TIME` seconds the `result' is `NIL'.
+If the future is not ready after `TIMEOUT` seconds the `result' is `NIL'.
 The `SLEEP-TIME` parameter specifies the time to sleep between checks of the future.
-The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-TIME` should be a divisor of `MAX-TIME`."
-  (let* ((attempts (truncate max-time sleep-time))
+The wait is based on attempts. To be accurate in terms of `TIMEOUT` the `SLEEP-TIME` should be a divisor of `TIMEOUT`."
+  (let* ((attempts (truncate timeout sleep-time))
          (result
            (loop :repeat attempts
                  :do
@@ -114,7 +114,6 @@ The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-
     (values result fut)))
 
 (defvar *asys* nil)
-(defvar *sender* nil "actor")
 (defvar *receiver* nil "actor")
 
 (defun %ensure-asys ()
@@ -126,7 +125,6 @@ The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-
                                             :waiter (:workers 1))
                                            :scheduler
                                            (:enabled :false)))))
-  (%make-sender)
   (%make-receiver))
 
 (defun %shutdown-asys ()
@@ -134,21 +132,7 @@ The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-
   (when *asys*
     (ac:shutdown *asys* :wait t)
     (setf *asys* nil)
-    (setf *sender* nil)
     (setf *receiver* nil)))
-
-;; sender
-
-(defun %sender-receive (msg)
-  "`MSG` is request"
-  (log:debug "Sender received: ~a" (type-of msg))
-  (send-knx-data msg))
-
-(defun %make-sender ()
-  (unless *sender*
-    (setf *sender* (ac:actor-of *asys*
-                                :name "KNX sender"
-                                :receive (lambda (msg) (%sender-receive msg))))))
 
 ;; receiver
 
@@ -162,7 +146,7 @@ The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-
 
 - `(:enqueue . <result>)` to enqueue the result of the receival.
 
-- `(:wait-on-resp-type . (<resp-type> <start-time>))` to wait (by retrying, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + *resp-wait-timeout-secs*` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request."
+- `(:wait-on-resp-type . (<resp-type> <start-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + *resp-wait-timeout-secs*` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request."
   (log:debug "Receiver received: ~a" (car msg))
   (let ((self act:*self*)
         (sender act:*sender*))
@@ -176,6 +160,9 @@ The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-
                   (sleep 0.2)
                   (! self `(:wait-on-resp-type . (,resp-type ,start-time)) sender))))))
       (case (car msg)
+        (:send
+         (send-knx-data (cdr msg)))
+        
         (:receive
          (tasks:with-context (*asys* :receiver)
            (tasks:task-async
@@ -203,7 +190,8 @@ The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-
                                'knx-receive-error
                                :format-control
                                (format nil
-                                       "Timeout waiting for response of type ~a" resp-type))))
+                                       "Timeout waiting for response of type ~a"
+                                       resp-type))))
              (return-from %receiver-receive))
            (log:trace "Checking for response of type: ~a" resp-type)
            (loop
@@ -239,8 +227,9 @@ The wait is based on attempts. To be accurate in terms of `MAX-TIME` the `SLEEP-
 Returns a future. The result will be a list of the received response and an error condition, if any.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol."
   (let ((req (make-descr-request *hpai-unbound-addr*)))
-    (! *sender* req)
-    (? *receiver* `(:wait-on-resp-type . (knx-descr-response ,(get-universal-time))))))
+    (! *receiver* `(:send . ,req))
+    (? *receiver* `(:wait-on-resp-type
+                    . (knx-descr-response ,(get-universal-time))))))
 
 (defun establish-tunnel-connection ()
   "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
@@ -249,9 +238,10 @@ The error condition will be of type `knx-receive-error` and reflects just an err
 
 If the connection is established successfully, the channel-id will be stored in the global variable `*channel-id*`."
   (let ((req (make-connect-request)))
-    (! *sender* req)
+    (! *receiver* `(:send . ,req))
     (let ((fut
-            (? *receiver* `(:wait-on-resp-type . (knx-connect-response ,(get-universal-time))))))
+            (? *receiver* `(:wait-on-resp-type
+                            . (knx-connect-response ,(get-universal-time))))))
       (fcompleted fut
           (result)
         (destructuring-bind (response _err) result
