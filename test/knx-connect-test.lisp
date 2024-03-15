@@ -1,8 +1,8 @@
 (defpackage :knx-conn.knx-connect-test
   (:use :cl :cl-mock :fiveam
    :knxutil :knxobj :descr-info :connect :tunnelling
-   :sento.miscutils
-        :crd :cemi :address :dib :dpt :knxc))
+   :sento.miscutils :sento.future
+   :crd :cemi :address :dib :dpt :knxc))
 
 (in-package :knx-conn.knx-connect-test)
 
@@ -182,7 +182,7 @@ In case of this the log must be checked."
 
       (let ((response-fut (establish-tunnel-connection)))
         (destructuring-bind (resp err)
-            (knxc::fawait response-fut :timeout .5)
+            (fawait response-fut :timeout .5)
           (is (null err))
           (is (= (connect-response-status resp)
                  +connect-status-err-conn-type+))))
@@ -191,20 +191,20 @@ In case of this the log must be checked."
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
 ;; TODOS:
-;; - need *sender*?
 ;; - extract receive-handlers to separate functions.
 
-;; (test connect--err--does-not-set-channel-id
-;;   (with-mocks ()
-;;     (answer usocket:socket-send t)
-;;     (answer usocket:socket-receive *connect-response-data-err*)
+(test connect--err--does-not-set-channel-id
+  (with-fixture env ()
+    (with-mocks ()
+      (answer usocket:socket-send t)
+      (answer usocket:socket-receive *connect-response-data-err*)
 
-;;     (let ((knxc::*channel-id* -1))
-;;       (establish-tunnel-connection)
-;;       (is (= knxc::*channel-id* -1)))
+      (setf knxc::*channel-id* -1)
+      (fawait (establish-tunnel-connection) :timeout 1)
+      (is (= knxc::*channel-id* -1))
     
-;;     (is (eql 1 (length (invocations 'usocket:socket-send))))
-;;     (is (eql 1 (length (invocations 'usocket:socket-receive))))))
+      (is (eql 1 (length (invocations 'usocket:socket-send))))
+      (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
 ;; ;; --------------------------------------
 ;; ;; disconnect request/response

@@ -64,13 +64,13 @@ Returns a list of the received object and an error condition, if any."
                 (parse-root-knx-object
                  (usocket:socket-receive *conn* buf 1024))))
           (log:debug "Received obj: ~a" received-obj)
-          (list received-obj nil))
+          `(,received-obj nil))
       (error (e)
         (log:info "Error: ~a" e)
-        (list nil e))
+        `(nil ,e))
       (condition (c)
         (log:info "Condition: ~a" c)
-        (list nil c)))))
+        `(nil ,c)))))
 
 ;; -----------------------------
 ;; high-level comm
@@ -98,21 +98,6 @@ Returns a list of the received object and an error condition, if any."
   (:report (lambda (c s)
              (format s "KNX receive error: ~a" (simple-condition-format-control c)))))
 
-(defun fawait (fut &key (timeout 0.5) (sleep-time 0.1))
-  "Wait for the future `FUT` to be ready. Returns VALUES with `result' of the future and `FUT'.
-If the future is not ready after `TIMEOUT` seconds the `result' is `NIL'.
-The `SLEEP-TIME` parameter specifies the time to sleep between checks of the future.
-The wait is based on attempts. To be accurate in terms of `TIMEOUT` the `SLEEP-TIME` should be a divisor of `TIMEOUT`."
-  (let* ((attempts (truncate timeout sleep-time))
-         (result
-           (loop :repeat attempts
-                 :do
-                    (let ((result (fresult fut)))
-                      (unless (eq result :not-ready)
-                        (return result))
-                      (sleep sleep-time)))))
-    (values result fut)))
-
 (defvar *asys* nil)
 (defvar *async-handler* nil "actor")
 
@@ -134,7 +119,7 @@ The wait is based on attempts. To be accurate in terms of `TIMEOUT` the `SLEEP-T
     (setf *asys* nil)
     (setf *async-handler* nil)))
 
-;; receiver
+;; async-handler
 
 (defvar *resp-wait-timeout-secs* 3 "Timeout for waiting for a response.")
 (defvar *received-things* nil)
@@ -149,64 +134,61 @@ The wait is based on attempts. To be accurate in terms of `TIMEOUT` the `SLEEP-T
 - `(:enqueue . <result>)` to enqueue the result of the receival.
 
 - `(:wait-on-resp-type . (<resp-type> <start-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + *resp-wait-timeout-secs*` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request."
-  (log:debug "Receiver received: ~a" (car msg))
-  (let ((self act:*self*)
-        (sender act:*sender*))
-    (flet ((timeout-elapsed-p (start-time)
-             (> (get-universal-time)
-                (+ *resp-wait-timeout-secs* start-time)))
-           (wait-and-call-again (resp-type start-time)
-             (tasks:with-context (*asys* :waiter)
-               (tasks:task-start
-                (lambda ()
-                  (sleep 0.2)
-                  (! self `(:wait-on-resp-type . (,resp-type ,start-time)) sender))))))
-      (case (car msg)
-        (:send
-         (send-knx-data (cdr msg)))
+  (destructuring-bind (msg-sym . args) msg
+    (log:debug "Receiver received: ~a" msg-sym)
+    (let ((self act:*self*)
+          (sender act:*sender*))
+      (flet ((timeout-elapsed-p (start-time)
+               (> (get-universal-time)
+                  (+ *resp-wait-timeout-secs* start-time)))
+             (wait-and-call-again (resp-type start-time)
+               (tasks:with-context (*asys* :waiter)
+                 (tasks:task-start
+                  (lambda ()
+                    (sleep 0.2)
+                    (! self `(:wait-on-resp-type . (,resp-type ,start-time)) sender))))))
+        (case msg-sym
+          (:send
+           (send-knx-data args))
         
-        (:receive
-         (tasks:with-context (*asys* :receiver)
-           (tasks:task-async
-            (lambda ()
-              (receive-knx-data))
-            :on-complete-fun
-            (lambda (result)
-              (log:debug "KNX response received: (~a ~a)"
-                         (type-of (first result))
-                         (second result))
-              (! self `(:enqueue . ,result))))))
+          (:receive
+           (tasks:with-context (*asys* :receiver)
+             (tasks:task-async
+              (lambda ()
+                (receive-knx-data))
+              :on-complete-fun
+              (lambda (result)
+                (log:debug "KNX response received: (~a ~a)"
+                           (type-of (first result))
+                           (second result))
+                (! self `(:enqueue . ,result))))))
         
-        (:enqueue
-         (push (cdr msg) *received-things*))
+          (:enqueue
+           (push args *received-things*))
         
-        (:wait-on-resp-type
-         (destructuring-bind (resp-type start-time) (cdr msg)
-           (log:trace "start-time: ~a, current-time: ~a, timeout-time: ~a"
-                      start-time
-                      (get-universal-time)
-                      (+ *resp-wait-timeout-secs* start-time))
-           (when (timeout-elapsed-p start-time)
-             (log:debug "Time elapsed waiting for response of type: ~a" resp-type)
-             (reply (list nil (make-condition
-                               'knx-receive-error
-                               :format-control
-                               (format nil
-                                       "Timeout waiting for response of type ~a"
-                                       resp-type))))
-             (return-from %handler-receive))
-           (log:trace "Checking for response of type: ~a" resp-type)
-           (loop
-             (let ((thing (pop *received-things*)))
-               (unless thing
-                 (log:trace "No thing received yet")
-                 (wait-and-call-again resp-type start-time)
-                 (return))
-               (destructuring-bind (response err) thing
-                 (log:debug "Popped thing: (resp:~a err:~a)" (type-of response) err)
-                 (if (typep response resp-type)
-                     (reply thing)
-                     (wait-and-call-again resp-type start-time)))))))))))
+          (:wait-on-resp-type
+           (destructuring-bind (resp-type start-time) args
+             (when (timeout-elapsed-p start-time)
+               (log:debug "Time elapsed waiting for response of type: ~a" resp-type)
+               (reply `(nil (make-condition
+                             'knx-receive-error
+                             :format-control
+                             (format nil
+                                     "Timeout waiting for response of type ~a"
+                                     resp-type))))
+               (return-from %handler-receive))
+             (log:trace "Checking for response of type: ~a" resp-type)
+             (loop
+               (let ((thing (pop *received-things*)))
+                 (unless thing
+                   (log:trace "No thing received yet")
+                   (wait-and-call-again resp-type start-time)
+                   (return))
+                 (destructuring-bind (response err) thing
+                   (log:debug "Popped thing: (resp:~a err:~a)" (type-of response) err)
+                   (if (typep response resp-type)
+                       (reply thing)
+                       (wait-and-call-again resp-type start-time))))))))))))
 
 (defun %make-handler ()
   (unless *async-handler*
