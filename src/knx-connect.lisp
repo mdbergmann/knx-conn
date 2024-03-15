@@ -211,10 +211,11 @@ Returns a list of the received object and an error condition, if any."
   "Retrieve the description information from the KNXnet/IP gateway. The response to this request will be received asynchronously.
 Returns a future. The result will be a list of the received response and an error condition, if any.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol."
-  (let ((req (make-descr-request *hpai-unbound-addr*)))
-    (! *async-handler* `(:send . ,req))
-    (? *async-handler* `(:wait-on-resp-type
-                         . (knx-descr-response ,(get-universal-time))))))
+  (log:info "Retrieving description information...")
+  (! *async-handler* `(:send
+                       . ,(make-descr-request *hpai-unbound-addr*)))
+  (? *async-handler* `(:wait-on-resp-type
+                       . (knx-descr-response ,(get-universal-time)))))
 
 (defun establish-tunnel-connection ()
   "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
@@ -222,50 +223,51 @@ Returns a future. The result will be a list of the received response and an erro
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol.
 
 If the connection is established successfully, the channel-id will be stored in the global variable `*channel-id*`."
-  (let ((req (make-connect-request)))
-    (! *async-handler* `(:send . ,req))
-    (let ((fut
-            (? *async-handler*
-               `(:wait-on-resp-type
-                 . (knx-connect-response ,(get-universal-time))))))
-      (fcompleted fut
-          (result)
-        (destructuring-bind (response _err) result
-          (declare (ignore _err))
-          (when response
-            (let ((status (connect-response-status response)))
-              (if (not (eql status 0))
-                  (log:warn "Tunnel connection failed, status: ~a" status)
-                  (progn
-                    (log:info "Tunnel connection established.")
-                    (log:info "Channel-id: ~a" (connect-response-channel-id response))
-                    (setf *channel-id*
-                          (connect-response-channel-id response))))))
-          (unless response
-            (log:warn "No response received."))))
-      fut)))
+  (log:info "Establishing tunnel connection...")
+  (! *async-handler* `(:send . ,(make-connect-request)))
+  
+  (let ((fut
+          (? *async-handler*
+             `(:wait-on-resp-type
+               . (knx-connect-response ,(get-universal-time))))))
+    (fcompleted fut
+        (result)
+      (destructuring-bind (response _err) result
+        (declare (ignore _err))
+        (when response
+          (let ((status (connect-response-status response)))
+            (if (not (eql status 0))
+                (log:warn "Tunnel connection failed, status: ~a" status)
+                (progn
+                  (log:info "Tunnel connection established.")
+                  (log:info "Channel-id: ~a" (connect-response-channel-id response))
+                  (setf *channel-id*
+                        (connect-response-channel-id response))))))
+        (unless response
+          (log:warn "No response received."))))
+    fut))
 
 (defun close-tunnel-connection ()
   (%assert-channel-id)
   (log:info "Closing tunnel connection...")
-  (let ((req (make-disconnect-request *channel-id*)))
-    (! *async-handler* `(:send . ,req))
-    (let ((fut
-            (? *async-handler*
-               `(:wait-on-resp-type
-                 . (knx-disconnect-response ,(get-universal-time))))))
-      (fcompleted fut
-          (result)
-        (destructuring-bind (response _err) result
-          (declare (ignore _err))
-          (when response
-            (let ((status (disconnect-response-status response)))
-              (if (not (eql status 0))
-                  (log:warn "Tunnel disconnection failed, status: ~a" status)
-                  (progn
-                    (log:info "Tunnel connection closed.")
-                    (setf *channel-id* nil)))))))
-      fut)))
+  (! *async-handler* `(:send . ,(make-disconnect-request *channel-id*)))
+  
+  (let ((fut
+          (? *async-handler*
+             `(:wait-on-resp-type
+               . (knx-disconnect-response ,(get-universal-time))))))
+    (fcompleted fut
+        (result)
+      (destructuring-bind (response _err) result
+        (declare (ignore _err))
+        (when response
+          (let ((status (disconnect-response-status response)))
+            (if (not (eql status 0))
+                (log:warn "Tunnel disconnection failed, status: ~a" status)
+                (progn
+                  (log:info "Tunnel connection closed.")
+                  (setf *channel-id* nil)))))))
+    fut))
 
 ;; ---------------------------------
 ;; with opened tunnelling connection
