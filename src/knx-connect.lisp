@@ -8,6 +8,8 @@
                 #:reply)
   (:export #:connect
            #:disconnect
+           #:start-async-receiving
+           #:register-tunnel-request-listener
            ;; send requests
            #:retrieve-descr-info
            #:establish-tunnel-connection
@@ -110,14 +112,34 @@ Returns a list of the received object and an error condition, if any."
                                             :waiter (:workers 1))
                                            :scheduler
                                            (:enabled :false)))))
-  (%make-handler))
+  (unless *async-handler*
+    (log:info "Creating async-handler...")
+    (%make-handler)))
 
 (defun %shutdown-asys ()
   (log:info "Shutting down actor system...")
   (when *asys*
     (ac:shutdown *asys* :wait t)
-    (setf *asys* nil)
-    (setf *async-handler* nil)))
+    (setf *asys* nil))
+  (when *async-handler*
+    (setf *async-handler* nil))
+  (when *tunnel-request-listeners*
+    (setf *tunnel-request-listeners* nil)))
+
+(defun %assert-async-handler ()
+  (assert *asys* nil "No actor system!")
+  (assert *async-handler* nil "No async-handler!"))
+
+(defvar *tunnel-request-listeners* nil
+  "A list of functions to be called when a tunnelling request is received.")
+
+(defun register-tunnel-request-listener (listener-fun)
+  "Register the given `listener-fun` to be called when a tunnelling request is received.
+The function is called with the `knx-tunnelling-request` as argument.
+Make sure that the function is not doing lon-running operations or else spawn a new task/thread so that it will not block/delay the receival of further requests."
+  (check-type listener-fun function)
+  (log:info "Registering listener...")
+  (push listener-fun *tunnel-request-listeners*))
 
 ;; async-handler
 
@@ -131,41 +153,56 @@ Returns a list of the received object and an error condition, if any."
 
 - `(:receive . nil)` to start receiving. The receival itself is done in a separate task. The result of the receival will be enqueued by:
 
-- `(:enqueue . <result>)` to enqueue the result of the receival.
+- `(:received . <result>)` looks as what is the type of the received. For `knx-tunnelling-request`s the registered listeber function will be called. All else will be enqueued in the `*received-things*` list
 
 - `(:wait-on-resp-type . (<resp-type> <start-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + *resp-wait-timeout-secs*` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request."
   (destructuring-bind (msg-sym . args) msg
-    (log:debug "Receiver received: ~a" msg-sym)
+    (log:debug "Async-handler received msg: ~a" msg-sym)
     (let ((self act:*self*)
           (sender act:*sender*))
-      (flet ((timeout-elapsed-p (start-time)
-               (> (get-universal-time)
-                  (+ *resp-wait-timeout-secs* start-time)))
-             (wait-and-call-again (resp-type start-time)
-               (tasks:with-context (*asys* :waiter)
-                 (tasks:task-start
-                  (lambda ()
-                    (sleep 0.2)
-                    (! self `(:wait-on-resp-type . (,resp-type ,start-time)) sender))))))
+      (labels ((timeout-elapsed-p (start-time)
+                 (> (get-universal-time)
+                    (+ *resp-wait-timeout-secs* start-time)))
+               (doasync (dispatcher fun &optional (completed-fun nil))
+                 (tasks:with-context (*asys* dispatcher)
+                   (if completed-fun
+                       (tasks:task-async fun
+                                         :on-complete-fun completed-fun)
+                       (tasks:task-start fun))))
+               (wait-and-call-again (resp-type start-time)
+                 (doasync :waiter
+                          (lambda ()
+                            (sleep 0.2)
+                            (! self `(:wait-on-resp-type
+                                      . (,resp-type ,start-time))
+                               sender)))))
         (case msg-sym
           (:send
            (send-knx-data args))
         
           (:receive
-           (tasks:with-context (*asys* :receiver)
-             (tasks:task-async
-              (lambda ()
-                (receive-knx-data))
-              :on-complete-fun
-              (lambda (result)
-                (log:debug "KNX response received: (~a ~a)"
-                           (type-of (first result))
-                           (second result))
-                (! self `(:enqueue . ,result))))))
-        
-          (:enqueue
-           (push args *received-things*))
-        
+           (doasync :receiver
+                    (lambda ()
+                      (receive-knx-data))
+                    (lambda (result)
+                      (log:debug "KNX response received: (~a ~a)"
+                                 (type-of (first result))
+                                 (second result))
+                      (! self `(:received . ,result)))))
+
+          (:received
+           (destructuring-bind (received err) args
+             (declare (ignore err))
+             (log:debug "Received: ~a" (type-of received))
+             (typecase received
+               (knx-tunnelling-request
+                (dolist (listener-fun *tunnel-request-listeners*)
+                  (funcall listener-fun received)))
+               (t
+                (progn
+                  (log:debug "Enqueuing: ~a" received)
+                  (push args *received-things*))))))
+          
           (:wait-on-resp-type
            (destructuring-bind (resp-type start-time) args
              (when (timeout-elapsed-p start-time)
@@ -196,9 +233,11 @@ Returns a list of the received object and an error condition, if any."
                            *asys*
                            :name "KNX receiver"
                            :receive (lambda (msg)
-                                      (%handler-receive msg))
-                           :init (lambda (self)
-                                   (! self '(:receive . nil)))))))
+                                      (%handler-receive msg))))))
+
+(defun start-async-receiving ()
+  (%assert-async-handler)
+  (! *async-handler* '(:receive . nil)))
 
 ;; ---------------------------------
 

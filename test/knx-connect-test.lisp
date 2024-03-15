@@ -15,12 +15,16 @@
 (log:config :debug)
 (log:config '(sento) :warn)
 
-(def-fixture env ()
+(def-fixture env (listener-fun)
+  (setf knxc::*conn* 'foo)
   (let ((resp-wait-timeout-store knxc::*resp-wait-timeout-secs*)
         (channel-id knxc::*channel-id*))
     (unwind-protect
          (progn
            (knxc::%ensure-asys)
+           (when listener-fun
+             (knxc:register-tunnel-request-listener listener-fun))
+           (knxc:start-async-receiving)
            (&body))
       (progn
         (knxc::%shutdown-asys)
@@ -31,8 +35,6 @@
 ;; description request/response
 ;; --------------------------------------
 
-(setf knxc::*conn* 'foo)
-
 (defparameter *descr-response-data*
   #(6 16 2 4 0 84 54 1 2 0 17 1 0 0 0 1 0 53 81 241 0 0 0 0 0 14 140 0 107 180 73
     80 32 73 110 116 101 114 102 97 99 101 32 78 49 52 56 0 0 0 0 0 0 0 0 0 0 0 0
@@ -42,7 +44,7 @@
     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
 
 (test retrieve-descr-info--receive-response--check-package
-  (with-fixture env ()
+  (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
       (answer usocket:socket-receive *descr-response-data*)
@@ -80,7 +82,7 @@
 (test wait-for-response--with-timeout--stop-when-elapsed
   "Test that when a response is expected but it doesn't come within the
    specified timeout, the result is timeout condition."
-  (with-fixture env ()
+  (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
       (answer usocket:socket-receive (progn
@@ -101,7 +103,7 @@
   "This also returns `:timeout` because the response couldn't be parsed correctly
 and so it is not possible to determine if it is the wanted response or not.
 In case of this the log must be checked."
-  (with-fixture env ()
+  (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
       (answer usocket:socket-receive (error "foo"))
@@ -124,7 +126,7 @@ In case of this the log must be checked."
     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
 
 (test connect--ok
-  (with-fixture env ()
+  (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
       (answer usocket:socket-receive *connect-response-data-ok*)
@@ -150,7 +152,7 @@ In case of this the log must be checked."
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
 (test connect--ok--sets-channel-id
-  (with-fixture env ()
+  (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
       (answer usocket:socket-receive *connect-response-data-ok*)
@@ -171,7 +173,7 @@ In case of this the log must be checked."
   "Connect response with error status")
 
 (test connect--err
-  (with-fixture env ()
+  (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
       (answer usocket:socket-receive *connect-response-data-err*)
@@ -187,7 +189,7 @@ In case of this the log must be checked."
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
 (test connect--err--does-not-set-channel-id
-  (with-fixture env ()
+  (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
       (answer usocket:socket-receive *connect-response-data-err*)
@@ -207,7 +209,7 @@ In case of this the log must be checked."
   #(6 16 2 10 0 8 0 0))
 
 (test disconnect--ok
-  (with-fixture env ()
+  (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
       (answer usocket:socket-receive *disconnect-response-data-ok*)
@@ -222,35 +224,40 @@ In case of this the log must be checked."
       (is (eql 1 (length (invocations 'usocket:socket-send))))
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
-;; (test disconnect--no-valid-channel-id
-;;   (with-mocks ()
-;;     (let ((knxc::*channel-id* nil))
-;;       (handler-case
-;;           (close-tunnel-connection)
-;;         (simple-error (c)
-;;           (is (equal (format nil "~a" c)
-;;                      "No open connection!"))))
-;;       (is (eql 0 (length (invocations 'usocket:socket-send))))
-;;       (is (eql 0 (length (invocations 'usocket:socket-receive)))))))
+(test disconnect--err--no-valid-channel-id
+  (with-fixture env (nil)
+    (with-mocks ()
+      (setf knxc::*conn* nil)
+      (setf knxc::*channel-id* nil)
+      (handler-case
+          (close-tunnel-connection)
+        (simple-error (c)
+          (is (equal (format nil "~a" c)
+                     "No open connection!"))))
+      (is (eql 0 (length (invocations 'usocket:socket-send))))
+      (is (eql 0 (length (invocations 'usocket:socket-receive)))))))
 
 ;; ;; --------------------------------------
 ;; ;; tunneling request receival
 ;; ;; --------------------------------------
 
-;; (defparameter *raw-tunnelling-request-data*
-;;   #(6 16 4 32 0 23 4 76 0 0 41 0 188 208 19 14 4 10 3 0 128 12 104))
+(defparameter *raw-tunnelling-request-data*
+  #(6 16 4 32 0 23 4 76 0 0 41 0 188 208 19 14 4 10 3 0 128 12 104))
 
-;; (test tunneling-receive-request--ok ()
-;;   (with-mocks ()
-;;     (answer usocket:socket-receive *raw-tunnelling-request-data*)
+(test tunnelling-receive-request--ok--is-delivered-to-listener ()
+  (let* ((request)
+         (listener-fun (lambda (req)
+                         (setf request req))))
+    (with-fixture env (listener-fun)
+      (with-mocks ()
+        (answer usocket:socket-receive *raw-tunnelling-request-data*)
 
-;;     (multiple-value-bind (request err)
-;;         (receive-knx-data)
-;;       (declare (ignore err))
-;;       (is (not (null request)))
-;;       (is (typep request 'knx-tunnelling-request)))
+        (await-cond 0.5
+          (not (null request)))
+        (is (not (null request)))
+        (is (typep request 'knx-tunnelling-request))
     
-;;     (is (= 1 (length (invocations 'usocket:socket-receive))))))
+        (is (= 1 (length (invocations 'usocket:socket-receive))))))))
 
 ;; ;; --------------------------------------
 ;; ;; tunneling request sending
