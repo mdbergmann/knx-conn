@@ -114,7 +114,7 @@ The wait is based on attempts. To be accurate in terms of `TIMEOUT` the `SLEEP-T
     (values result fut)))
 
 (defvar *asys* nil)
-(defvar *receiver* nil "actor")
+(defvar *async-handler* nil "actor")
 
 (defun %ensure-asys ()
   (log:info "Ensuring actor system...")
@@ -125,22 +125,24 @@ The wait is based on attempts. To be accurate in terms of `TIMEOUT` the `SLEEP-T
                                             :waiter (:workers 1))
                                            :scheduler
                                            (:enabled :false)))))
-  (%make-receiver))
+  (%make-handler))
 
 (defun %shutdown-asys ()
   (log:info "Shutting down actor system...")
   (when *asys*
     (ac:shutdown *asys* :wait t)
     (setf *asys* nil)
-    (setf *receiver* nil)))
+    (setf *async-handler* nil)))
 
 ;; receiver
 
 (defvar *resp-wait-timeout-secs* 3 "Timeout for waiting for a response.")
 (defvar *received-things* nil)
 
-(defun %receiver-receive (msg)
+(defun %handler-receive (msg)
   "Allows the folloing messages:
+
+- `(:send . <request>)` to send a request.
 
 - `(:receive . nil)` to start receiving. The receival itself is done in a separate task. The result of the receival will be enqueued by:
 
@@ -192,7 +194,7 @@ The wait is based on attempts. To be accurate in terms of `TIMEOUT` the `SLEEP-T
                                (format nil
                                        "Timeout waiting for response of type ~a"
                                        resp-type))))
-             (return-from %receiver-receive))
+             (return-from %handler-receive))
            (log:trace "Checking for response of type: ~a" resp-type)
            (loop
              (let ((thing (pop *received-things*)))
@@ -206,14 +208,15 @@ The wait is based on attempts. To be accurate in terms of `TIMEOUT` the `SLEEP-T
                      (reply thing)
                      (wait-and-call-again resp-type start-time)))))))))))
 
-(defun %make-receiver ()
-  (unless *receiver*
-    (setf *receiver* (ac:actor-of *asys*
-                                  :name "KNX receiver"
-                                  :receive (lambda (msg)
-                                             (%receiver-receive msg))
-                                  :init (lambda (self)
-                                          (! self '(:receive . nil)))))))
+(defun %make-handler ()
+  (unless *async-handler*
+    (setf *async-handler* (ac:actor-of
+                           *asys*
+                           :name "KNX receiver"
+                           :receive (lambda (msg)
+                                      (%handler-receive msg))
+                           :init (lambda (self)
+                                   (! self '(:receive . nil)))))))
 
 ;; ---------------------------------
 
@@ -227,9 +230,9 @@ The wait is based on attempts. To be accurate in terms of `TIMEOUT` the `SLEEP-T
 Returns a future. The result will be a list of the received response and an error condition, if any.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol."
   (let ((req (make-descr-request *hpai-unbound-addr*)))
-    (! *receiver* `(:send . ,req))
-    (? *receiver* `(:wait-on-resp-type
-                    . (knx-descr-response ,(get-universal-time))))))
+    (! *async-handler* `(:send . ,req))
+    (? *async-handler* `(:wait-on-resp-type
+                         . (knx-descr-response ,(get-universal-time))))))
 
 (defun establish-tunnel-connection ()
   "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
@@ -238,10 +241,10 @@ The error condition will be of type `knx-receive-error` and reflects just an err
 
 If the connection is established successfully, the channel-id will be stored in the global variable `*channel-id*`."
   (let ((req (make-connect-request)))
-    (! *receiver* `(:send . ,req))
+    (! *async-handler* `(:send . ,req))
     (let ((fut
-            (? *receiver* `(:wait-on-resp-type
-                            . (knx-connect-response ,(get-universal-time))))))
+            (? *async-handler* `(:wait-on-resp-type
+                                 . (knx-connect-response ,(get-universal-time))))))
       (fcompleted fut
           (result)
         (destructuring-bind (response _err) result
