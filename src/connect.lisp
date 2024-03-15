@@ -12,6 +12,8 @@
            #:make-disconnect-request
            #:knx-disconnect-request
            #:knx-disconnect-response
+           #:disconnect-response-status
+           #:disconnect-response-channel-id
            ))
 
 

@@ -225,8 +225,9 @@ If the connection is established successfully, the channel-id will be stored in 
   (let ((req (make-connect-request)))
     (! *async-handler* `(:send . ,req))
     (let ((fut
-            (? *async-handler* `(:wait-on-resp-type
-                                 . (knx-connect-response ,(get-universal-time))))))
+            (? *async-handler*
+               `(:wait-on-resp-type
+                 . (knx-connect-response ,(get-universal-time))))))
       (fcompleted fut
           (result)
         (destructuring-bind (response _err) result
@@ -246,7 +247,25 @@ If the connection is established successfully, the channel-id will be stored in 
 
 (defun close-tunnel-connection ()
   (%assert-channel-id)
-  (%with-request-response (make-disconnect-request *channel-id*)))
+  (log:info "Closing tunnel connection...")
+  (let ((req (make-disconnect-request *channel-id*)))
+    (! *async-handler* `(:send . ,req))
+    (let ((fut
+            (? *async-handler*
+               `(:wait-on-resp-type
+                 . (knx-disconnect-response ,(get-universal-time))))))
+      (fcompleted fut
+          (result)
+        (destructuring-bind (response _err) result
+          (declare (ignore _err))
+          (when response
+            (let ((status (disconnect-response-status response)))
+              (if (not (eql status 0))
+                  (log:warn "Tunnel disconnection failed, status: ~a" status)
+                  (progn
+                    (log:info "Tunnel connection closed.")
+                    (setf *channel-id* nil)))))))
+      fut)))
 
 ;; ---------------------------------
 ;; with opened tunnelling connection

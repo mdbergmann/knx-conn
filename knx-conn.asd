@@ -61,6 +61,7 @@ OK - more dpt types
 OK - parse dpts from byte array
 OK - rename `dpt-len' to `dpt-byte-len'
 => - add a 'client' top-level package (rename knx-connect to knx-client)
+- extract receive-handlers to separate functions.
 - allow hooks to be registered for value updates on certain group-addresses
 - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (Datum)
 - default cemi tests
