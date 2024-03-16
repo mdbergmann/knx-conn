@@ -265,11 +265,11 @@ In case of this the log must be checked."
 ;; ;; --------------------------------------
 
 (test send-write-request--switch-on
-  (with-fixture env (nil)
-    (with-mocks ()
-      (answer usocket:socket-send t)
-      (answer usocket:socket-receive #())
+  (with-mocks ()
+    (answer usocket:socket-send t)
+    (answer usocket:socket-receive #())
       
+    (with-fixture env (nil)
       (setf knxc::*channel-id* 78)
       (let ((req (send-write-request (make-group-address "0/4/10")
                                      (make-dpt1 :switch :on))))
@@ -278,12 +278,12 @@ In case of this the log must be checked."
       (is-true (await-cond 0.5
                  (= 1 (length (invocations 'usocket:socket-send))))))))
 
-(test send-write-request--increment-seq-counter
-  (with-fixture env (nil)
-    (with-mocks ()
-      (answer usocket:socket-send t)
-      (answer usocket:socket-receive #())
+(test send-write-request--seq-counter--increment
+  (with-mocks ()
+    (answer usocket:socket-send t)
+    (answer usocket:socket-receive #())
 
+    (with-fixture env (nil)
       (setf knxc::*channel-id* 78)
       (setf knxc::*seq-counter* 0)
       (let ((req (send-write-request (make-group-address "0/4/10")
@@ -292,17 +292,19 @@ In case of this the log must be checked."
                   (tunnelling-request-conn-header req)))))
       (is (= 1 knxc::*seq-counter*)))))
 
-;; (test send-write-request--seq-counter-rollover
-;;   (with-mocks ()
-;;     (answer usocket:socket-send t)
-;;     (let ((knxc::*channel-id* 78)
-;;           (knxc::*seq-counter* 254))
-;;       (let ((req (send-write-request (make-group-address "0/4/10")
-;;                                      (make-dpt1 :switch :on))))
-;;         (is (= 0 (conn-header-seq-counter
-;;                   (tunnelling-request-conn-header req)))))
-;;       (is (= 0 knxc::*seq-counter*)))
-;;     (is (= 1 (length (invocations 'usocket:socket-send))))))
+(test send-write-request--seq-counter--rollover
+  (with-mocks ()
+    (answer usocket:socket-send t)
+    (answer usocket:socket-receive #())
+
+    (with-fixture env (nil)
+      (setf knxc::*channel-id* 78)
+      (setf knxc::*seq-counter* 254)
+      (let ((req (send-write-request (make-group-address "0/4/10")
+                                     (make-dpt1 :switch :on))))
+        (is (= 0 (conn-header-seq-counter
+                  (tunnelling-request-conn-header req)))))
+      (is (= 0 knxc::*seq-counter*)))))
 
 ;; (test send-read-request
 ;;   (with-mocks ()
