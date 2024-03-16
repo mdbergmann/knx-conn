@@ -9,11 +9,15 @@
            #:connect-response-crd
            #:+connect-status-no-error+
            #:+connect-status-err-conn-type+
+           ;; disconnect
            #:make-disconnect-request
            #:knx-disconnect-request
            #:knx-disconnect-response
            #:disconnect-response-status
            #:disconnect-response-channel-id
+           ;; connection-state
+           #:make-connstate-request
+           #:knx-connstate-request
            ))
 
 
@@ -154,7 +158,7 @@ KNXnet/IP body
                (to-byte-seq (disconnect-request-hpai obj))))
 
 ;; -----------------------------
-;; knx disconnect request
+;; knx disconnect response
 ;; -----------------------------
 
 (defconstant +knx-disconnect-response+ #x020a)
@@ -186,3 +190,38 @@ KNXnet/IP body
      :header header
      :channel-id channel-id
      :status status)))
+
+;; -----------------------------
+;; knx connection-state request
+;; -----------------------------
+
+(defconstant +knx-connstate-request+ #x0207)
+
+(defstruct (knx-connstate-request (:include knx-package)
+                                  (:constructor %make-connstate-request)
+                                  (:conc-name connstate-request-))
+  "KNXnet/IP header (see above)
+
+KNXnet/IP body
++-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+| Communication Channel ID    | reserved                        |
+|                             |                                 |
++-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+| HPAI                                                          |
+| Control endpoint                                              |
++---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+"
+  (channel-id (error "channel-id required!") :type octet)
+  (hpai *hpai-unbound-addr* :type hpai))
+
+(defun make-connstate-request (channel-id)
+  (%make-connstate-request
+   :header (make-header +knx-connstate-request+
+                        (+ (hpai-len *hpai-unbound-addr*) 2))
+   :channel-id channel-id
+   :hpai *hpai-unbound-addr*))
+
+(defmethod to-byte-seq ((obj knx-connstate-request))
+  (concatenate '(vector octet)
+               (call-next-method obj)
+               (vector (connstate-request-channel-id obj) 0)
+               (to-byte-seq (connstate-request-hpai obj))))

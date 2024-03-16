@@ -44,7 +44,7 @@
     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
 
-(test retrieve-descr-info--receive-response--check-package
+(test retrieve-descr-info--request-response--check-package
   (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
@@ -116,9 +116,9 @@ In case of this the log must be checked."
           (is (null result))
           (is (typep err 'knx-receive-error)))))))
 
-;; ;; --------------------------------------
-;; ;; connect request/response
-;; ;; --------------------------------------
+;; --------------------------------------
+;; connect request/response
+;; --------------------------------------
 
 (defparameter *connect-response-data-ok*
   #(6 16 2 6 0 20 78 0 8 1 0 0 0 0 0 0 4 4 238 255 0 0 0 0 0 0 0 0
@@ -126,7 +126,7 @@ In case of this the log must be checked."
     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
 
-(test connect--ok
+(test connect--request-response--ok
   (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
@@ -202,19 +202,19 @@ In case of this the log must be checked."
       (is (eql 1 (length (invocations 'usocket:socket-send))))
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
-;; ;; --------------------------------------
-;; ;; disconnect request/response
-;; ;; --------------------------------------
+;; --------------------------------------
+;; disconnect request/response
+;; --------------------------------------
 
 (defparameter *disconnect-response-data-ok*
   #(6 16 2 10 0 8 0 0))
 
-(test disconnect--ok
-  (with-fixture env (nil)
-    (with-mocks ()
-      (answer usocket:socket-send t)
-      (answer usocket:socket-receive *disconnect-response-data-ok*)
+(test disconnect--request-response--ok
+  (with-mocks ()
+    (answer usocket:socket-send t)
+    (answer usocket:socket-receive *disconnect-response-data-ok*)
 
+    (with-fixture env (nil)
       (setf knxc::*channel-id* 78)
       (destructuring-bind (response err)
           (fawait (close-tunnel-connection) :timeout 1)
@@ -226,8 +226,8 @@ In case of this the log must be checked."
       (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
 
 (test disconnect--err--no-valid-channel-id
-  (with-fixture env (nil)
-    (with-mocks ()
+  (with-mocks ()
+    (with-fixture env (nil)
       (setf knxc::*conn* nil)
       (setf knxc::*channel-id* nil)
       (handler-case
@@ -238,9 +238,27 @@ In case of this the log must be checked."
       (is (eql 0 (length (invocations 'usocket:socket-send))))
       (is (eql 0 (length (invocations 'usocket:socket-receive)))))))
 
-;; ;; --------------------------------------
-;; ;; tunneling request receival
-;; ;; --------------------------------------
+;; --------------------------------------
+;; connection-state request/response
+;; --------------------------------------
+
+(test connection-state-request-response--ok
+  (with-mocks ()
+    (answer usocket:socket-send t)
+    (answer usocket:socket-receive #())
+
+    (with-fixture env (nil)
+      (setf knxc::*channel-id* 78)
+      (send-connection-state)
+
+      (is-true (await-cond 0.5
+                 (= 1 (length (invocations 'usocket:socket-send))))))
+    ))
+
+
+;; --------------------------------------
+;; tunneling request receival
+;; --------------------------------------
 
 (defparameter *raw-tunnelling-request-data*
   #(6 16 4 32 0 23 4 76 0 0 41 0 188 208 19 14 4 10 3 0 128 12 104))
@@ -260,9 +278,9 @@ In case of this the log must be checked."
     
         (is (= 1 (length (invocations 'usocket:socket-receive))))))))
 
-;; ;; --------------------------------------
-;; ;; tunneling request sending
-;; ;; --------------------------------------
+;; --------------------------------------
+;; tunneling request sending
+;; --------------------------------------
 
 (test send-write-request--switch-on
   (with-mocks ()
