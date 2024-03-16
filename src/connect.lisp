@@ -158,6 +158,13 @@ KNXnet/IP body
                (vector (disconnect-request-channel-id obj) 0)
                (to-byte-seq (disconnect-request-hpai obj))))
 
+(defmethod parse-to-obj ((obj-type (eql +knx-disconnect-request+)) header body)
+  (let ((channel-id (aref body 0)))
+    (%make-disconnect-request
+     :header header
+     :channel-id channel-id
+     :hpai (parse-hpai (subseq body 2)))))
+
 ;; -----------------------------
 ;; knx disconnect response
 ;; -----------------------------

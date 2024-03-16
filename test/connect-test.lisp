@@ -26,6 +26,15 @@
     (is (vectorp bytes))
     (is (= (length bytes) 16))))
 
+(test parse-disconnect-request
+  (let ((req (parse-to-obj connect::+knx-disconnect-request+
+                            (make-header connect::+knx-disconnect-request+ 2)
+                            (concatenate '(vector octet)
+                                         #(0 0)
+                                         (to-byte-seq *hpai-unbound-addr*)))))
+    (is (typep req 'knx-disconnect-request))
+    (is (= (connect::disconnect-request-channel-id req) 0))))
+
 (test parse-disconnect-response
   (let ((resp (parse-to-obj connect::+knx-disconnect-response+
                             (make-header connect::+knx-disconnect-response+ 2)
