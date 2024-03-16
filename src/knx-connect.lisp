@@ -203,6 +203,11 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                   (log:debug "Notifying listeners of received tunnelling request...")
                   (dolist (listener-fun *tunnel-request-listeners*)
                     (funcall listener-fun received))))
+               (knx-disconnect-request
+                (progn
+                  (log:info "Received disconnect request.")
+                  (setf *channel-id* nil)
+                  (setf *seq-counter* 0)))
                (t
                 (progn
                   (log:debug "Enqueuing: ~a" received)
@@ -326,13 +331,6 @@ If the connection is established successfully, the channel-id will be stored in 
                (setf *channel-id* nil))))))
     fut))
 
-;; ---------------------------------
-;; with opened tunnelling connection
-;; ---------------------------------
-
-;; ---------------------------------
-;; connection state
-
 (defun send-connection-state ()
   "Sends a connection-state request to the KNXnet/IP gateway. The response to this request will be received asynchronously.
 Returns the request that was sent.
@@ -344,7 +342,8 @@ This request should be sent every some seconds (i.e. 60) as a heart-beat to keep
                        . (knx-connstate-response ,(get-universal-time)))))
 
 ;; ---------------------------------
-;; write/read dpts
+;; tunnelling-request functions
+;; ---------------------------------
 
 (defun send-write-request (group-address dpt)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.

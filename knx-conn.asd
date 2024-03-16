@@ -61,7 +61,8 @@ OK - more dpt types
 OK - parse dpts from byte array
 OK - rename `dpt-len' to `dpt-byte-len'
 OK - make top-level client-like
-=> - implement CONNECTIONSTATE_REQUEST/RESPONSE
+OK - implement CONNECTIONSTATE_REQUEST/RESPONSE
+=> - received disconnect-request closes tunnel connection and cleans up
 - add heartbeat (every 60 seconds) to keep connection alive
 Implement CONNECTIONSTATE_REQUEST/RESPONSE for that
 - connstate: check for up-to 10 seconds response delay

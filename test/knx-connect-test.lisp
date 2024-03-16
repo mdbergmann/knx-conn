@@ -238,6 +238,19 @@ In case of this the log must be checked."
       (is (eql 0 (length (invocations 'usocket:socket-send))))
       (is (eql 0 (length (invocations 'usocket:socket-receive)))))))
 
+(test disconnect--received-request--closes-connection
+  (with-mocks ()
+    (let ((req-bytes (to-byte-seq
+                      (make-disconnect-request 78))))
+      (answer usocket:socket-receive req-bytes)
+
+      (setf knxc::*channel-id* 78)
+      (with-fixture env (nil)
+        (is-true (await-cond 0.5
+                   (null knxc::*channel-id*))))
+
+      (is (eql 1 (length (invocations 'usocket:socket-receive)))))))
+
 ;; --------------------------------------
 ;; connection-state request/response
 ;; --------------------------------------
@@ -260,6 +273,18 @@ In case of this the log must be checked."
     (is (= 1 (length (invocations 'usocket:socket-send))))
     (is (= 1 (length (invocations 'usocket:socket-receive))))))
 
+(test connection-state--err--no-valid-channel-id
+  (with-mocks ()
+    (with-fixture env (nil)
+      (setf knxc::*conn* nil)
+      (setf knxc::*channel-id* nil)
+      (handler-case
+          (send-connection-state)
+        (simple-error (c)
+          (is (equal (format nil "~a" c)
+                     "No open connection!"))))
+      (is (eql 0 (length (invocations 'usocket:socket-send))))
+      (is (eql 0 (length (invocations 'usocket:socket-receive)))))))
 
 ;; --------------------------------------
 ;; tunneling request receival
