@@ -61,11 +61,15 @@ OK - more dpt types
 OK - parse dpts from byte array
 OK - rename `dpt-len' to `dpt-byte-len'
 => - add a 'client' top-level package (rename knx-connect to knx-client)
+- add heartbeat (every 60 seconds) to keep connection alive
+Implement CONNECTIONSTATE_REQUEST/RESPONSE for that
+- Add listener for DISCONNECT_REQUEST received from server
 - extract receive-handlers to separate functions.
 - allow hooks to be registered for value updates on certain group-addresses
 - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (Datum)
 - default cemi tests
 - more error handling tests
 - dpt1, more on/off options like (t / nil)
+- make nice DSL for the supported dpt types
 
 |#

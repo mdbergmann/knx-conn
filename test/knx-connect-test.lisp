@@ -29,7 +29,8 @@
       (progn
         (knxc::%shutdown-asys)
         (setf knxc::*resp-wait-timeout-secs* resp-wait-timeout-store)
-        (setf knxc::*channel-id* channel-id)))))
+        (setf knxc::*channel-id* channel-id)
+        (setf knxc::*seq-counter* 0)))))
 
 ;; --------------------------------------
 ;; description request/response
@@ -267,7 +268,6 @@ In case of this the log must be checked."
   (with-fixture env (nil)
     (with-mocks ()
       (answer usocket:socket-send t)
-      ;; receiver is running in parallel, so we'll have to return something
       (answer usocket:socket-receive #())
       
       (setf knxc::*channel-id* 78)
@@ -278,17 +278,19 @@ In case of this the log must be checked."
       (is-true (await-cond 0.5
                  (= 1 (length (invocations 'usocket:socket-send))))))))
 
-;; (test send-write-request--increment-seq-counter
-;;   (with-mocks ()
-;;     (answer usocket:socket-send t)
-;;     (let ((knxc::*channel-id* 78)
-;;           (knxc::*seq-counter* 0))
-;;       (let ((req (send-write-request (make-group-address "0/4/10")
-;;                                      (make-dpt1 :switch :on))))
-;;         (is (= 1 (conn-header-seq-counter
-;;                   (tunnelling-request-conn-header req)))))
-;;       (is (= 1 knxc::*seq-counter*)))
-;;     (is (= 1 (length (invocations 'usocket:socket-send))))))
+(test send-write-request--increment-seq-counter
+  (with-fixture env (nil)
+    (with-mocks ()
+      (answer usocket:socket-send t)
+      (answer usocket:socket-receive #())
+
+      (setf knxc::*channel-id* 78)
+      (setf knxc::*seq-counter* 0)
+      (let ((req (send-write-request (make-group-address "0/4/10")
+                                     (make-dpt1 :switch :on))))
+        (is (= 1 (conn-header-seq-counter
+                  (tunnelling-request-conn-header req)))))
+      (is (= 1 knxc::*seq-counter*)))))
 
 ;; (test send-write-request--seq-counter-rollover
 ;;   (with-mocks ()

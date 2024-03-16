@@ -83,6 +83,20 @@ Returns a list of the received object and an error condition, if any."
 ;; helpers and vars
 ;; -----------------------------
 
+(defvar *asys* nil
+  "The actor system used for async communication.")
+
+(defvar *async-handler* nil
+  "The actor that handles the async communication.")
+
+(defvar *resp-wait-timeout-secs* 3
+  "Timeout for waiting for a response.")
+
+(defvar *tunnel-request-listeners* nil
+  "A list of functions to be called when a tunnelling request is received.")
+
+(defvar *received-things* nil)
+
 ;; ---------------------------------
 ;; communication queues, actors, etc
 ;; ---------------------------------
@@ -90,9 +104,6 @@ Returns a list of the received object and an error condition, if any."
 (define-condition knx-receive-error (simple-error) ()
   (:report (lambda (c s)
              (format s "KNX receive error: ~a" (simple-condition-format-control c)))))
-
-(defvar *asys* nil)
-(defvar *async-handler* nil "actor")
 
 (defun %ensure-asys ()
   (log:info "Ensuring actor system...")
@@ -123,9 +134,6 @@ Returns a list of the received object and an error condition, if any."
   (assert *asys* nil "No actor system!")
   (assert *async-handler* nil "No async-handler!"))
 
-(defvar *tunnel-request-listeners* nil
-  "A list of functions to be called when a tunnelling request is received.")
-
 (defun register-tunnel-request-listener (listener-fun)
   "Register the given `listener-fun` to be called when a tunnelling request is received.
 The function is called with the `knx-tunnelling-request` as argument.
@@ -137,9 +145,6 @@ Make sure that the function is not doing lon-running operations or else spawn a 
 ;; ---------------------------------
 ;; async-handler
 ;; ---------------------------------
-
-(defvar *resp-wait-timeout-secs* 3 "Timeout for waiting for a response.")
-(defvar *received-things* nil)
 
 (defun %handler-receive (msg)
   "Allows the folloing messages:
