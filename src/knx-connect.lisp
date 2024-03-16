@@ -15,6 +15,7 @@
            #:retrieve-descr-info
            #:establish-tunnel-connection
            #:close-tunnel-connection
+           #:send-connection-state
            #:send-write-request
            #:send-read-request
            ;; receive data
@@ -329,6 +330,22 @@ If the connection is established successfully, the channel-id will be stored in 
 ;; with opened tunnelling connection
 ;; ---------------------------------
 
+;; ---------------------------------
+;; connection state
+
+(defun send-connection-state ()
+  "Sends a connection-state request to the KNXnet/IP gateway. The response to this request will be received asynchronously.
+Returns the request that was sent.
+This request should be sent every some seconds (i.e. 60) as a heart-beat to keep the connection alive."
+  (%assert-channel-id)
+  (! *async-handler* `(:send
+                       . ,(make-connstate-request *channel-id*)))
+  (? *async-handler* `(:wait-on-resp-type
+                       . (knx-connstate-response ,(get-universal-time)))))
+
+;; ---------------------------------
+;; write/read dpts
+
 (defun send-write-request (group-address dpt)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
 Returns the request that was sent."
@@ -347,7 +364,8 @@ Returns the request that was sent."
     req))
 
 (defun send-read-request (group-address)
-  "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously."
+  "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously.
+Returns the request that was sent."
   (check-type group-address knx-group-address)
   (%assert-channel-id)
   (let ((req (make-tunnelling-request

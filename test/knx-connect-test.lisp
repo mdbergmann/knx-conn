@@ -242,18 +242,23 @@ In case of this the log must be checked."
 ;; connection-state request/response
 ;; --------------------------------------
 
+(defparameter *connstate-response-data-ok*
+  #(6 16 2 8 0 8 0 0))
+
 (test connection-state-request-response--ok
   (with-mocks ()
     (answer usocket:socket-send t)
-    (answer usocket:socket-receive #())
+    (answer usocket:socket-receive *connstate-response-data-ok*)
 
     (with-fixture env (nil)
       (setf knxc::*channel-id* 78)
-      (send-connection-state)
-
-      (is-true (await-cond 0.5
-                 (= 1 (length (invocations 'usocket:socket-send))))))
-    ))
+      (destructuring-bind (response err)
+          (fawait (send-connection-state) :timeout 1)
+        (is (null err))
+        (is (typep response 'knx-connstate-response))))
+      
+    (is (= 1 (length (invocations 'usocket:socket-send))))
+    (is (= 1 (length (invocations 'usocket:socket-receive))))))
 
 
 ;; --------------------------------------
