@@ -336,13 +336,13 @@ Returns the request that was sent."
   (check-type dpt dpt)
   (%assert-channel-id)
   (let ((req (make-tunnelling-request
-                          :channel-id *channel-id*
-                          :seq-counter (%next-seq-counter)
-                          :cemi (make-default-cemi
-                                 :message-code +cemi-mc-l_data.req+
-                                 :dest-address group-address
-                                 :apci (make-apci-gv-write)
-                                 :dpt dpt))))
+              :channel-id *channel-id*
+              :seq-counter (%next-seq-counter)
+              :cemi (make-default-cemi
+                     :message-code +cemi-mc-l_data.req+
+                     :dest-address group-address
+                     :apci (make-apci-gv-write)
+                     :dpt dpt))))
     (! *async-handler* `(:send . ,req))
     req))
 
@@ -350,12 +350,14 @@ Returns the request that was sent."
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously."
   (check-type group-address knx-group-address)
   (%assert-channel-id)
-  (send-knx-data
-   (make-tunnelling-request
-    :channel-id *channel-id*
-    :seq-counter (%next-seq-counter)
-    :cemi (make-default-cemi
-           :message-code +cemi-mc-l_data.req+
-           :dest-address group-address
-           :apci (make-apci-gv-read)
-           :dpt nil))))
+  (let ((req (make-tunnelling-request
+              :channel-id *channel-id*
+              :seq-counter (%next-seq-counter)
+              :cemi (make-default-cemi
+                     :message-code +cemi-mc-l_data.req+
+                     :dest-address group-address
+                     :apci (make-apci-gv-read)
+                     :dpt nil))))
+    (! *async-handler* `(:send . ,req))
+    req))
+

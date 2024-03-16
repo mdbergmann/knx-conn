@@ -268,7 +268,6 @@ In case of this the log must be checked."
   (with-mocks ()
     (answer usocket:socket-send t)
     (answer usocket:socket-receive #())
-      
     (with-fixture env (nil)
       (setf knxc::*channel-id* 78)
       (let ((req (send-write-request (make-group-address "0/4/10")
@@ -282,7 +281,6 @@ In case of this the log must be checked."
   (with-mocks ()
     (answer usocket:socket-send t)
     (answer usocket:socket-receive #())
-
     (with-fixture env (nil)
       (setf knxc::*channel-id* 78)
       (setf knxc::*seq-counter* 0)
@@ -296,7 +294,6 @@ In case of this the log must be checked."
   (with-mocks ()
     (answer usocket:socket-send t)
     (answer usocket:socket-receive #())
-
     (with-fixture env (nil)
       (setf knxc::*channel-id* 78)
       (setf knxc::*seq-counter* 254)
@@ -306,15 +303,17 @@ In case of this the log must be checked."
                   (tunnelling-request-conn-header req)))))
       (is (= 0 knxc::*seq-counter*)))))
 
-;; (test send-read-request
-;;   (with-mocks ()
-;;     (answer usocket:socket-send t)
-;;     (let ((knxc::*channel-id* 78)
-;;           (knxc::*seq-counter* 79))
-;;       (let ((req (send-read-request (make-group-address "0/4/10"))))
-;;         (is (= 78 (conn-header-channel-id
-;;                    (tunnelling-request-conn-header req))))
-;;         (is (= 80 (conn-header-seq-counter
-;;                    (tunnelling-request-conn-header req))))))
-;;     (is (= 1 (length (invocations 'usocket:socket-send))))))
-
+(test send-read-request
+  (with-mocks ()
+    (answer usocket:socket-send t)
+    (answer usocket:socket-receive #())
+    (with-fixture env (nil)
+      (setf knxc::*channel-id* 78)
+      (setf knxc::*seq-counter* 79)
+      (let ((req (send-read-request (make-group-address "0/4/10"))))
+        (is (= 78 (conn-header-channel-id
+                   (tunnelling-request-conn-header req))))
+        (is (= 80 (conn-header-seq-counter
+                   (tunnelling-request-conn-header req))))))
+    (is-true (await-cond 0.5
+               (= 1 (length (invocations 'usocket:socket-send)))))))
