@@ -24,8 +24,7 @@
   (let* ((req (make-disconnect-request 0))
          (bytes (to-byte-seq req)))
     (is (vectorp bytes))
-    (is (= (length bytes) 16))
-    ))
+    (is (= (length bytes) 16))))
 
 (test parse-disconnect-response
   (let ((resp (parse-to-obj connect::+knx-disconnect-response+
@@ -35,3 +34,30 @@
     (is (= (connect::disconnect-response-channel-id resp) 0))
     (is (= (connect::disconnect-response-status resp) 0))))
 
+(test make-connstate-request--ok
+  (let ((req (make-connstate-request 0)))
+    (is (typep req 'knx-connstate-request))
+    (is (= connect::+knx-connstate-request+
+           (header-type
+            (connect::connstate-request-header req))))
+    (is (= (connect::connstate-request-channel-id req) 0))
+    (is (equalp (connect::connstate-request-hpai req)
+                *hpai-unbound-addr*))
+    (is (= (header-body-len
+            (connect::connstate-request-header req)) 16))))
+
+(test connstate-request--to-byte-seq
+  (let* ((req (make-connstate-request 0))
+         (bytes (to-byte-seq req)))
+    (is (vectorp bytes))
+    (is (= (length bytes) 16))))
+
+(test parse-connstate-response
+  (let ((resp (parse-to-obj connect::+knx-connstate-response+
+                            (make-header connect::+knx-connstate-response+ 2)
+                            #(0 0))))
+    (is (typep resp 'knx-connstate-response))
+    (is (= (connect::connstate-response-channel-id resp) 0))
+    (is (= (connect::connstate-response-status resp) 0))))
+
+(run! 'connect-tests)

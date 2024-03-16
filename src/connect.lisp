@@ -18,6 +18,7 @@
            ;; connection-state
            #:make-connstate-request
            #:knx-connstate-request
+           #:knx-connstate-response
            ))
 
 
@@ -225,3 +226,37 @@ KNXnet/IP body
                (call-next-method obj)
                (vector (connstate-request-channel-id obj) 0)
                (to-byte-seq (connstate-request-hpai obj))))
+
+;; -----------------------------
+;; knx connection-state response
+;; -----------------------------
+
+(defconstant +knx-connstate-response+ #x0208)
+
+(defstruct (knx-connstate-response (:include knx-package)
+                                   (:constructor %%make-connstate-response)
+                                   (:conc-name connstate-response-))
+  "KNXnet/IP header (see above)
+
+KNXnet/IP body
++-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+| Communication Channel ID    | Status                          |
+|                             |                                 |
++---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+"
+  (channel-id (error "channel-id required!") :type octet)
+  (status (error "status required!") :type octet))
+
+(defun %make-connstate-response (channel-id status)
+  (%%make-connstate-response
+   :header (make-header +knx-connstate-response+
+                        (+ 6 2))
+   :channel-id channel-id
+   :status status))
+
+(defmethod parse-to-obj ((obj-type (eql +knx-connstate-response+)) header body)
+  (let ((channel-id (aref body 0))
+        (status (aref body 1)))
+    (%%make-connstate-response
+     :header header
+     :channel-id channel-id
+     :status status)))
