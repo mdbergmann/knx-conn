@@ -68,5 +68,3 @@
     (is (typep resp 'knx-connstate-response))
     (is (= (connect::connstate-response-channel-id resp) 0))
     (is (= (connect::connstate-response-status resp) 0))))
-
-(run! 'connect-tests)

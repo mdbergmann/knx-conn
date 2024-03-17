@@ -7,10 +7,10 @@
                 #:!
                 #:?
                 #:reply)
-  (:export #:connect
+  (:export #:knx-conn-init
+           #:knx-conn-destroy
+           #:connect
            #:disconnect
-           #:start-async-receiving
-           #:register-tunnel-request-listener
            ;; send requests
            #:retrieve-descr-info
            #:establish-tunnel-connection
@@ -65,8 +65,8 @@
   "Receive a KNXnet/IP request from the KNXnet/IP gateway.
 Returns a list of the received object and an error condition, if any."
   (assert *conn* nil "No connection!")
+  (log:debug "Receiving data...")
   (let ((buf (make-array 1024 :element-type 'octet)))
-    (log:debug "Receiving data...")
     (handler-case 
         (let ((received-obj
                 (parse-root-knx-object
@@ -96,7 +96,26 @@ Returns a list of the received object and an error condition, if any."
 (defvar *tunnel-request-listeners* nil
   "A list of functions to be called when a tunnelling request is received.")
 
-(defvar *received-things* nil)
+(defparameter *default-receive-knx-data-recur-delay-secs* 0)
+(defvar *receive-knx-data-recur-delay-secs*
+  *default-receive-knx-data-recur-delay-secs*
+  "Defines a delay in seconds for the recurring retrieval of KNX data.
+Only applicable if `start-receiving` is true in `knx-conn-init`.")
+
+(defvar *received-things* nil "Pool of received messages that are not handled otherwise.")
+
+(defvar *channel-id* nil
+  "The channel-id of the current tunnelling connection.")
+
+(defun %assert-channel-id ()
+  (assert (integerp *channel-id*)
+          nil "No open connection!"))
+
+(defvar *seq-counter* 0
+  "The sequence counter for the current tunnelling connection.")
+
+(defun %next-seq-counter ()
+  (setf *seq-counter* (mod (1+ *seq-counter*) 255)))
 
 ;; ---------------------------------
 ;; communication queues, actors, etc
@@ -109,15 +128,16 @@ Returns a list of the received object and an error condition, if any."
 (defun %ensure-asys ()
   (log:info "Ensuring actor system...")
   (unless *asys*
+    (log:info "Creating actor system...")
     (setf *asys* (asys:make-actor-system '(:dispatchers
                                            (:shared (:workers 2)
                                             :receiver (:workers 1)
                                             :waiter (:workers 1))
                                            :scheduler
-                                           (:enabled :false)))))
-  (unless *async-handler*
-    (log:info "Creating async-handler...")
-    (%make-handler)))
+                                           (:enabled :false))))
+    (unless *async-handler*
+      (log:info "Creating async-handler...")
+      (%make-handler))))
 
 (defun %shutdown-asys ()
   (log:info "Shutting down actor system...")
@@ -135,7 +155,7 @@ Returns a list of the received object and an error condition, if any."
   (assert *asys* nil "No actor system!")
   (assert *async-handler* nil "No async-handler!"))
 
-(defun register-tunnel-request-listener (listener-fun)
+(defun %register-tunnel-request-listener (listener-fun)
   "Register the given `listener-fun` to be called when a tunnelling request is received.
 The function is called with the `knx-tunnelling-request` as argument.
 Make sure that the function is not doing lon-running operations or else spawn a new task/thread so that it will not block/delay the receival of further requests."
@@ -185,7 +205,15 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
           (:receive
            (doasync :receiver
                     (lambda ()
-                      (receive-knx-data))
+                      (prog1
+                          (handler-case
+                              ;; this call blocks until data is available
+                              ;; or there is an error
+                              (receive-knx-data)
+                            (error (c)
+                              (log:warn "Error on receiving: ~a" c)))
+                        (sleep *receive-knx-data-recur-delay-secs*)
+                        (! self `(:receive . nil))))
                     (lambda (result)
                       (when (and result (car result))
                         (log:debug "KNX response received: (~a ~a)"
@@ -245,27 +273,35 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                            :receive (lambda (msg)
                                       (%handler-receive msg))))))
 
-(defun start-async-receiving ()
+(defun %start-async-receiving ()
   (%assert-async-handler)
   (! *async-handler* '(:receive . nil)))
+
+
+(defun knx-conn-init (host &key (port 3671)
+                             (start-receiving t)
+                             (tunnel-request-listeners nil))
+  (log:info "Initializing KNX...")
+  (connect host port)
+  (when tunnel-request-listeners
+    (dolist (listener-fun tunnel-request-listeners)
+      (%register-tunnel-request-listener listener-fun)))
+  (%ensure-asys)
+  (when start-receiving
+    (%start-async-receiving))
+  )
+
+(defun knx-conn-destroy ()
+  (log:info "Destroying KNX...")
+  (when *conn*
+    (disconnect))
+  (when *asys*
+    (%shutdown-asys))
+  )
 
 ;; ---------------------------------
 ;; knx management functions
 ;; ---------------------------------
-
-(defvar *channel-id* nil
-  "The channel-id of the current tunnelling connection.")
-
-(defun %assert-channel-id ()
-  (assert (integerp *channel-id*)
-          nil "No open connection!"))
-
-(defvar *seq-counter* 0
-  "The sequence counter for the current tunnelling connection.")
-
-(defun %next-seq-counter ()
-  (setf *seq-counter* (mod (1+ *seq-counter*) 255)))
-
 
 (defun %handle-response-fut (fut handle-fun)
   (fcompleted fut

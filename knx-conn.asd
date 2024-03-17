@@ -62,12 +62,14 @@ OK - parse dpts from byte array
 OK - rename `dpt-len' to `dpt-byte-len'
 OK - make top-level client-like
 OK - implement CONNECTIONSTATE_REQUEST/RESPONSE
-=> - received disconnect-request closes tunnel connection and cleans up
-- add heartbeat (every 60 seconds) to keep connection alive
+OK - received disconnect-request closes tunnel connection and cleans up
+=> - add heartbeat (every 60 seconds) to keep connection alive
 Implement CONNECTIONSTATE_REQUEST/RESPONSE for that
+- make starting retrieve configurable
+- make starting heartbeat configurable
+- make with- macro for setting single value only (disabled retrieve and heartbeat)
 - connstate: check for up-to 10 seconds response delay
 - connstate: check for 3 failed requests
-- Add listener for DISCONNECT_REQUEST received from server
 - extract receive-handlers to separate functions.
 - allow hooks to be registered for value updates on certain group-addresses
 - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (Datum)
