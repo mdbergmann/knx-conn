@@ -63,9 +63,9 @@ OK - rename `dpt-len' to `dpt-byte-len'
 OK - make top-level client-like
 OK - implement CONNECTIONSTATE_REQUEST/RESPONSE
 OK - received disconnect-request closes tunnel connection and cleans up
+OK - make starting retrieve configurable
 => - add heartbeat (every 60 seconds) to keep connection alive
 Implement CONNECTIONSTATE_REQUEST/RESPONSE for that
-- make starting retrieve configurable
 - make starting heartbeat configurable
 - make with- macro for setting single value only (disabled retrieve and heartbeat)
 - connstate: check for up-to 10 seconds response delay
