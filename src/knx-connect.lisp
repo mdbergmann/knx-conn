@@ -281,9 +281,9 @@ Make sure that the function is not doing lon-running operations or else spawn a 
 (defun %handler-receive (msg)
   "Allows the folloing messages:
 
-- `(:send . <request>)` to send a request.
+- `(:send . <request>)` to send an knx request to the gateway.
 
-- `(:receive . nil)` to start receiving. The receival itself is done in a separate task (sento.tasks API). The result of the receival is forwarded to:
+- `(:receive . nil)` to start receive knx requests/responses from the gateway. The receival itself is done in a separate task (sento.tasks API). The result of the receival is forwarded to:
 
 - `(:received . <result>)` looks at what is the type of the received.
 For `knx-tunnelling-request`s the registered listener functions will be called. All else will be enqueued in the `*received-things*` list, for `:wait-on-resp-type` to check.
@@ -395,6 +395,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
 (defun knx-conn-init (host &key (port 3671)
                              (start-receiving t)
                              (tunnel-request-listeners nil))
+  "Initialize and setup the KNX connection and other internal structures."
   (log:info "Initializing KNX...")
   (%ip-connect host port)
   (when tunnel-request-listeners
@@ -406,6 +407,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
   )
 
 (defun knx-conn-destroy ()
+  "Close the KNX connection and destroy the internal structures."
   (log:info "Destroying KNX...")
   (when *conn*
     (%ip-disconnect))

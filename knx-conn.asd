@@ -12,17 +12,23 @@
                 :serial t
                 :components
                 ((:file "utils")
-                 (:file "knx-obj")
-                 (:file "address")
-                 (:file "dpt")
-                 (:file "hpai")
-                 (:file "dib")
-                 (:file "cri")
-                 (:file "crd")
-                 (:file "cemi")
-                 (:file "descr-info")
-                 (:file "connect")
-                 (:file "tunneling")
+                 (:module "knx-model"
+                  :serial t
+                  :components
+                  ((:file "knx-obj")
+                   (:file "address")
+                   (:file "dpt")
+                   (:file "hpai")
+                   (:file "dib")
+                   (:file "cri")
+                   (:file "crd")
+                   (:file "cemi")))
+                 (:module "knx-msg"
+                  :serial t
+                  :components
+                  ((:file "descr-info")
+                   (:file "connect")
+                   (:file "tunneling")))
                  (:file "knx-connect")
                  )))
   :in-order-to ((test-op (test-op "knx-conn/tests"))))
@@ -64,7 +70,10 @@ OK - make top-level client-like
 OK - implement CONNECTIONSTATE_REQUEST/RESPONSE
 OK - received disconnect-request closes tunnel connection and cleans up
 OK - make starting retrieve configurable
-=> - add heartbeat (every 60 seconds) to keep connection alive
+OK - restructure code: folders knx-model, knx-msg
+- split knx-conn into: ip-client (dep: knx-model/knx-msg), knx-client (dep: ip-client),
+    knx-conn (dep: knx-client)
+- add heartbeat (every 60 seconds) to keep connection alive
 Implement CONNECTIONSTATE_REQUEST/RESPONSE for that
 - make starting heartbeat configurable
 - make with- macro for setting single value only (disabled retrieve and heartbeat)
