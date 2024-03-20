@@ -30,6 +30,7 @@
                    (:file "connect")
                    (:file "tunneling")))
                  (:file "ip-client")
+                 (:file "knx-client")
                  (:file "knx-connect")
                  )))
   :in-order-to ((test-op (test-op "knx-conn/tests"))))
@@ -49,6 +50,7 @@
                  (:file "descr-info-test")
                  (:file "connect-test")
                  (:file "tunnelling-test")
+                 (:file "knx-client-test")
                  (:file "knx-connect-test")
                  )))
   :description "Test system for knx"
