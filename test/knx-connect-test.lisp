@@ -51,20 +51,20 @@
     (answer usocket:socket-close t)
     (unwind-protect
          (progn
-           (setf knxc::*conn* nil)
+           (setf ip-client::*conn* nil)
            (setf knxc::*asys* nil)
            (knx-conn-init "123.23.45.21"
                           :start-receiving nil)
-           (is (eq knxc::*conn* 'dummy))
+           (is (eq ip-client::*conn* 'dummy))
            (is (not (null knxc::*asys*))))
       (knx-conn-destroy))
     (is (= 1 (length (invocations 'usocket:socket-connect))))
     (is (= 1 (length (invocations 'usocket:socket-close))))
-    (is (eq knxc::*conn* nil))
+    (is (eq ip-client::*conn* nil))
     (is (eq knxc::*asys* nil))))
 
 (test init--no-connect-when-already-connected
-  (let ((knxc::*conn* 'dummy))
+  (let ((ip-client::*conn* 'dummy))
     (with-mocks ()
       (answer usocket:socket-connect 'new)
       (handler-case
@@ -74,12 +74,12 @@
         (error (c)
           (is (equal (format nil "~a" c)
                      "Already connected!"))))
-      (is (eq knxc::*conn* 'dummy))
+      (is (eq ip-client::*conn* 'dummy))
       (is (= 0 (length (invocations 'usocket:socket-connect)))))))
 
 (test init--no-init-asys-when-already-initialized
   (let ((knxc::*asys* 'dummy)
-        (knxc::*conn* nil))
+        (ip-client::*conn* nil))
     (with-mocks ()
       (answer usocket:socket-connect 'new)
       (answer asys:make-actor-system 'foo)
@@ -91,7 +91,7 @@
 (test init--start-async-receiving--does-start-receiving
   "Make sure `start-async-receiving` starts the recurring receiving."
   (setf knxc::*asys* nil
-        knxc::*conn* nil)
+        ip-client::*conn* nil)
   (with-mocks ()
     (answer usocket:socket-connect 'dummy)
     (answer usocket:socket-close t)
@@ -107,7 +107,7 @@
 
 (test init--no-start-async-receiving--does-not-start-receiving
   (let ((knxc::*asys* nil)
-        (knxc::*conn* nil))
+        (ip-client::*conn* nil))
     (with-mocks ()
       (answer usocket:socket-connect 'dummy)
       (answer usocket:socket-close t)
@@ -308,7 +308,7 @@ In case of this the log must be checked."
 
 (test disconnect--err--no-valid-channel-id
   (with-fixture env (nil nil)
-    (setf knxc::*conn* nil)
+    (setf ip-client::*conn* nil)
     (setf knxc::*channel-id* nil)
     (handler-case
         (close-tunnel-connection)
@@ -355,7 +355,7 @@ In case of this the log must be checked."
 
 (test connection-state--err--no-valid-channel-id
   (with-fixture env (nil nil)
-    (setf knxc::*conn* nil)
+    (setf ip-client::*conn* nil)
     (setf knxc::*channel-id* nil)
     (handler-case
         (send-connection-state)

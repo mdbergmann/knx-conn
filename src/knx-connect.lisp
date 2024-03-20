@@ -1,5 +1,5 @@
 (defpackage :knx-conn.knx-connect
-  (:use :cl :knxutil :knxobj :descr-info :connect :tunnelling
+  (:use :cl :knxutil :knxobj :ip-client :descr-info :connect :tunnelling
         :hpai :cemi :address :dpt
         :sento.future)
   (:nicknames :knxc)
@@ -23,58 +23,6 @@
 (in-package :knx-conn.knx-connect)
 
 (defparameter *knx-if* "192.168.50.41")
-
-;; -----------------------------
-;; low-level communication (UDP)
-;; -----------------------------
-
-(defvar *conn* nil)
-
-(defun %ip-connect (address &optional (port 3671))
-  "Connect to the KNXnet/IP gateway at the given `address` and `port`."
-  (assert (null *conn*) nil "Already connected!")
-  (let ((conn (usocket:socket-connect
-               address port
-               :protocol :datagram
-               :element-type 'octet)))
-    (assert conn nil "Could not %ip-connect to ~a on port ~a" address port)
-    (log:info "Connected to ~a on port ~a" address port)
-    (setf *conn* conn)))
-
-(defun %ip-disconnect ()
-  "Disconnect from the KNXnet/IP gateway."
-  (assert *conn* nil "No connection!")
-  (usocket:socket-close *conn*)
-  (setf *conn* nil))
-
-(defun %ip-send-knx-data (request)
-  "Send the given `request` to the KNXnet/IP gateway."
-  (assert *conn* nil "No connection!")
-  (log:debug "Sending obj: ~a" request)
-  (let ((req-bytes (to-byte-seq request)))
-    (check-type req-bytes (simple-array (unsigned-byte 8) (*)))
-    (log:debug "Sending bytes: ~a" req-bytes)
-    (usocket:socket-send *conn* req-bytes (length req-bytes)))
-  request)
-
-(defun %ip-receive-knx-data ()
-  "Receive a KNXnet/IP request from the KNXnet/IP gateway.
-Returns a list of the received object and an error condition, if any."
-  (assert *conn* nil "No connection!")
-  (log:debug "Receiving data...")
-  (let ((buf (make-array 1024 :element-type 'octet)))
-    (handler-case 
-        (let ((received-obj
-                (parse-root-knx-object
-                 (usocket:socket-receive *conn* buf 1024))))
-          (log:debug "Received obj: ~a" received-obj)
-          `(,received-obj nil))
-      (error (e)
-        (log:info "Error: ~a" e)
-        `(nil ,e))
-      (condition (c)
-        (log:info "Condition: ~a" c)
-        `(nil ,c)))))
 
 ;; -----------------------------
 ;; helpers and vars
@@ -311,7 +259,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                                sender)))))
         (case msg-sym
           (:send
-           (%ip-send-knx-data args))
+           (ip-send-knx-data args))
         
           (:receive
            (doasync :receiver
@@ -320,7 +268,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                           (handler-case
                               ;; this call blocks until data is available
                               ;; or there is an error
-                              (%ip-receive-knx-data)
+                              (ip-receive-knx-data)
                             (error (c)
                               (log:warn "Error on receiving: ~a" c)))
                         (sleep *receive-knx-data-recur-delay-secs*)
@@ -344,7 +292,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                     (funcall listener-fun received))))
                (knx-disconnect-request
                 (progn
-                  (log:info "Received %ip-disconnect request.")
+                  (log:info "Received ip-disconnect request.")
                   (setf *channel-id* nil)
                   (setf *seq-counter* 0)))
                (t
@@ -397,7 +345,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                              (tunnel-request-listeners nil))
   "Initialize and setup the KNX connection and other internal structures."
   (log:info "Initializing KNX...")
-  (%ip-connect host port)
+  (ip-connect host port)
   (when tunnel-request-listeners
     (dolist (listener-fun tunnel-request-listeners)
       (%register-tunnel-request-listener listener-fun)))
@@ -409,8 +357,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
 (defun knx-conn-destroy ()
   "Close the KNX connection and destroy the internal structures."
   (log:info "Destroying KNX...")
-  (when *conn*
-    (%ip-disconnect))
+  (ip-disconnect)
   (when *asys*
     (%shutdown-asys))
   )

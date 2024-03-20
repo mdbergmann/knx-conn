@@ -29,6 +29,7 @@
                   ((:file "descr-info")
                    (:file "connect")
                    (:file "tunneling")))
+                 (:file "ip-client")
                  (:file "knx-connect")
                  )))
   :in-order-to ((test-op (test-op "knx-conn/tests"))))
@@ -71,7 +72,7 @@ OK - implement CONNECTIONSTATE_REQUEST/RESPONSE
 OK - received disconnect-request closes tunnel connection and cleans up
 OK - make starting retrieve configurable
 OK - restructure code: folders knx-model, knx-msg
-- split knx-conn into: ip-client (dep: knx-model/knx-msg), knx-client (dep: ip-client),
+=> - split knx-conn into: ip-client (dep: knx-model/knx-msg), knx-client (dep: ip-client),
     knx-conn (dep: knx-client)
 - add heartbeat (every 60 seconds) to keep connection alive
 Implement CONNECTIONSTATE_REQUEST/RESPONSE for that
