@@ -114,9 +114,9 @@
       (destructuring-bind (result err)
           (fawait result-fut :timeout 1)
         (is (null result))
-        (is (typep err 'knx-receive-error))
+        (is (typep err 'knx-response-timeout-error))
         (is (equal (format nil "~a" err)
-                   (format nil "KNX receive error: Timeout waiting for response of type KNX-DESCR-RESPONSE")))))))
+                   (format nil "KNX timeout error: Timeout waiting for response of type KNX-DESCR-RESPONSE")))))))
 
 (test wait-for-response--error-on-response-parsing
   "This also returns `:timeout` because the response couldn't be parsed correctly
@@ -131,7 +131,7 @@ In case of this the log must be checked."
       (destructuring-bind (result err)
           (fawait result-fut :timeout 2)
         (is (null result))
-        (is (typep err 'knx-receive-error))))))
+        (is (typep err 'knx-response-timeout-error))))))
 
 ;; --------------------------------------
 ;; connect request/response

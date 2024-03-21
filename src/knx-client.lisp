@@ -26,6 +26,7 @@
            #:start-heartbeat
            ;; conditions
            #:knx-receive-error
+           #:knx-response-timeout-error
            ))
 
 (in-package :knx-conn.knx-client)
@@ -40,6 +41,10 @@
 (define-condition knx-receive-error (simple-error) ()
   (:report (lambda (c s)
              (format s "KNX receive error: ~a" (simple-condition-format-control c)))))
+
+(define-condition knx-response-timeout-error (simple-error) ()
+  (:report (lambda (c s)
+             (format s "KNX timeout error: ~a" (simple-condition-format-control c)))))
 
 ;; ---------------------------------
 ;; global variables
@@ -230,21 +235,21 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
     (log:debug "Async-handler received msg: ~a" msg-sym)
     (let ((self act:*self*)
           (sender act:*sender*))
-      (labels ((timeout-elapsed-p (start-time wait-time)
+      (labels ((timeout-elapsed-p (start-time resp-wait-time)
                  (> (get-universal-time)
-                    (+ wait-time start-time)))
+                    (+ resp-wait-time start-time)))
                (doasync (dispatcher fun &optional (completed-fun nil))
                  (tasks:with-context ((act:context *async-handler*) dispatcher)
                    (if completed-fun
                        (tasks:task-async fun
                                          :on-complete-fun completed-fun)
                        (tasks:task-start fun))))
-               (wait-and-call-again (resp-type start-time wait-time)
+               (wait-and-call-again (resp-type start-time resp-wait-time)
                  (doasync :waiter
                           (lambda ()
                             (sleep 0.2)
                             (! self `(:wait-on-resp-type
-                                      . (,resp-type ,start-time ,wait-time))
+                                      . (,resp-type ,start-time ,resp-wait-time))
                                sender)))))
         (case msg-sym
           (:send
@@ -290,11 +295,11 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                   (push args *received-things*))))))
           
           (:wait-on-resp-type
-           (destructuring-bind (resp-type start-time wait-time) args
-             (when (timeout-elapsed-p start-time wait-time)
-               (log:debug "Time elapsed waiting for response of type: ~a" resp-type)
+           (destructuring-bind (resp-type start-time resp-wait-time) args
+             (when (timeout-elapsed-p start-time resp-wait-time)
+               (log:info "Time elapsed waiting for response of type: ~a" resp-type)
                (reply `(nil ,(make-condition
-                              'knx-receive-error
+                              'knx-response-timeout-error
                               :format-control
                               (format nil
                                       "Timeout waiting for response of type ~a"
@@ -305,13 +310,13 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                (let ((thing (pop *received-things*)))
                  (unless thing
                    (log:trace "No thing received yet")
-                   (wait-and-call-again resp-type start-time wait-time)
+                   (wait-and-call-again resp-type start-time resp-wait-time)
                    (return))
                  (destructuring-bind (response err) thing
                    (log:debug "Popped thing: (resp:~a err:~a)" (type-of response) err)
                    (if (typep response resp-type)
                        (reply thing)
-                       (wait-and-call-again resp-type start-time wait-time)))))))
+                       (wait-and-call-again resp-type start-time resp-wait-time)))))))
 
           (:heartbeat
            ;; extended wait timeout according to spec
