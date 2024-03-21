@@ -74,10 +74,9 @@ OK - implement CONNECTIONSTATE_REQUEST/RESPONSE
 OK - received disconnect-request closes tunnel connection and cleans up
 OK - make starting retrieve configurable
 OK - restructure code: folders knx-model, knx-msg
-=> - split knx-conn into: ip-client (dep: knx-model/knx-msg), knx-client (dep: ip-client),
+OK - split knx-conn into: ip-client (dep: knx-model/knx-msg), knx-client (dep: ip-client),
     knx-conn (dep: knx-client)
-- add heartbeat (every 60 seconds) to keep connection alive
-Implement CONNECTIONSTATE_REQUEST/RESPONSE for that
+=> - add heartbeat (every 60 seconds) to keep connection alive
 - make starting heartbeat configurable
 - make with- macro for setting single value only (disabled retrieve and heartbeat)
 - connstate: check for up-to 10 seconds response delay

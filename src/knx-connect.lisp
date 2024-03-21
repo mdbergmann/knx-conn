@@ -46,7 +46,8 @@ Make sure that the function is not doing lon-running operations or else spawn a 
 ;; ---------------------------------
 
 (defun knx-conn-init (host &key (port 3671)
-                             (start-receiving t)
+                             (start-receive t)
+                             (enable-heartbeat t)
                              (tunnel-request-listeners nil))
   "Initialize and setup the KNX connection and other internal structures."
   (log:info "Initializing KNX...")
@@ -58,9 +59,12 @@ Make sure that the function is not doing lon-running operations or else spawn a 
   (unless *async-handler*
     (log:info "Creating async-handler...")
     (make-async-handler *asys*))
-  (when start-receiving
+  (when start-receive
     (log:info "Starting async-receive...")
-    (start-async-receive)))
+    (start-async-receive))
+  (when enable-heartbeat
+    (log:info "Starting heartbeat...")
+    (start-heartbeat)))
 
 (defun knx-conn-destroy ()
   "Close the KNX connection and destroy the internal structures."

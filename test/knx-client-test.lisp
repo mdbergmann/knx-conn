@@ -17,7 +17,7 @@
 (log:config :debug)
 (log:config '(sento) :warn)
 
-(def-fixture env (listener-fun start-receive)
+(def-fixture env (listener-fun start-receive enable-heartbeat)
   ;; store some variables to reset them after the test
   (let ((resp-wait-timeout-store
           *resp-wait-timeout-secs*)
@@ -39,6 +39,8 @@
              (make-async-handler test-asys)
              (when start-receive
                (start-async-receive))
+             (when enable-heartbeat
+               (start-heartbeat))
              (when listener-fun
                (push listener-fun *tunnel-request-listeners*))
              (&body))
@@ -62,7 +64,7 @@
     0 12 2 2 1 3 2 4 1 7 1 8 1 12 254 0 1 8 0 255 241 115 255 148 75 0 0 0 0 0 0))
 
 (test retrieve-descr-info--request-response--check-package
-  (with-fixture env (nil t)
+  (with-fixture env (nil t nil)
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *descr-response-data*)
 
@@ -100,7 +102,7 @@
 (test wait-for-response--with-timeout--stop-when-elapsed
   "Test that when a response is expected but it doesn't come within the
    specified timeout, the result is timeout condition."
-  (with-fixture env (nil t)
+  (with-fixture env (nil t nil)
     (answer usocket:socket-send t)
     (answer usocket:socket-receive (progn
                                      (sleep 2.0)
@@ -120,7 +122,7 @@
   "This also returns `:timeout` because the response couldn't be parsed correctly
 and so it is not possible to determine if it is the wanted response or not.
 In case of this the log must be checked."
-  (with-fixture env (nil t)
+  (with-fixture env (nil t nil)
     (answer usocket:socket-send t)
     (answer usocket:socket-receive (error "foo"))
 
@@ -142,7 +144,7 @@ In case of this the log must be checked."
     0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
 
 (test connect--request-response--ok
-  (with-fixture env (nil t)
+  (with-fixture env (nil t nil)
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *connect-response-data-ok*)
 
@@ -168,7 +170,7 @@ In case of this the log must be checked."
     (is (>= (length (invocations 'usocket:socket-receive)) 1))))
 
 (test connect--ok--sets-channel-id
-  (with-fixture env (nil t)
+  (with-fixture env (nil t nil)
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *connect-response-data-ok*)
 
@@ -189,7 +191,7 @@ In case of this the log must be checked."
   "Connect response with error status")
 
 (test connect--err
-  (with-fixture env (nil t)
+  (with-fixture env (nil t nil)
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *connect-response-data-err*)
 
@@ -204,7 +206,7 @@ In case of this the log must be checked."
     (is (>= (length (invocations 'usocket:socket-receive)) 1))))
 
 (test connect--err--does-not-set-channel-id
-  (with-fixture env (nil t)
+  (with-fixture env (nil t nil)
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *connect-response-data-err*)
 
@@ -227,7 +229,7 @@ In case of this the log must be checked."
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *disconnect-response-data-ok*)
 
-    (with-fixture env (nil t)
+    (with-fixture env (nil t nil)
       (setf knx-client::*channel-id* 78)
       (destructuring-bind (response err)
           (fawait (close-tunnel-connection) :timeout 1.5)
@@ -239,7 +241,7 @@ In case of this the log must be checked."
       (is (>= (length (invocations 'usocket:socket-receive)) 1)))))
 
 (test disconnect--err--no-valid-channel-id
-  (with-fixture env (nil nil)
+  (with-fixture env (nil nil nil)
     (setf ip-client::*conn* nil)
     (setf knx-client::*channel-id* nil)
     (handler-case
@@ -257,7 +259,7 @@ In case of this the log must be checked."
       (answer usocket:socket-receive req-bytes)
 
       (setf knx-client::*channel-id* 78)
-      (with-fixture env (nil t)
+      (with-fixture env (nil t nil)
         (is-true (await-cond 1.5
                    (null knx-client::*channel-id*))))
 
@@ -275,7 +277,7 @@ In case of this the log must be checked."
     (answer usocket:socket-send t)
     (answer usocket:socket-receive *connstate-response-data-ok*)
 
-    (with-fixture env (nil t)
+    (with-fixture env (nil t nil)
       (setf knx-client::*channel-id* 78)
       (destructuring-bind (response err)
           (fawait (send-connection-state) :timeout 1.5)
@@ -286,7 +288,7 @@ In case of this the log must be checked."
     (is (>= (length (invocations 'usocket:socket-receive)) 1))))
 
 (test connection-state--err--no-valid-channel-id
-  (with-fixture env (nil nil)
+  (with-fixture env (nil nil nil)
     (setf ip-client::*conn* nil)
     (setf knx-client::*channel-id* nil)
     (handler-case
@@ -296,6 +298,16 @@ In case of this the log must be checked."
                    "No open connection!"))))
     (is (= (length (invocations 'usocket:socket-send)) 0))
     (is (= (length (invocations 'usocket:socket-receive)) 0))))
+
+(test connection-state--send-as-heartbeat--ok
+  (with-mocks ()
+    (answer (ip-client:ip-send-knx-data req)
+      (assert (typep req 'knx-connstate-request) nil "wrong request type")
+      t)
+    (let ((knx-client::*heartbeat-interval-secs* 1))
+      (with-fixture env (nil nil t)
+        (is-true (await-cond 1.5
+                   (>= (length (invocations 'ip-client:ip-send-knx-data)) 1)))))))
 
 ;; --------------------------------------
 ;; tunneling request receival
@@ -310,7 +322,7 @@ In case of this the log must be checked."
                          (setf request req))))
     (with-mocks ()
       (answer usocket:socket-receive *raw-tunnelling-request-data*)
-      (with-fixture env (listener-fun t)
+      (with-fixture env (listener-fun t nil)
         (await-cond 1.5
           (not (null request)))
         (is (not (null request)))
@@ -322,7 +334,7 @@ In case of this the log must be checked."
 ;; --------------------------------------
 
 (test send-write-request--switch-on
-  (with-fixture env (nil nil)
+  (with-fixture env (nil nil nil)
     (answer usocket:socket-send t)
 
     (setf knx-client::*channel-id* 78)
@@ -334,7 +346,7 @@ In case of this the log must be checked."
                (= 1 (length (invocations 'usocket:socket-send)))))))
 
 (test send-write-request--seq-counter--increment
-  (with-fixture env (nil nil)
+  (with-fixture env (nil nil nil)
     (answer usocket:socket-send t)
     (setf knx-client::*channel-id* 78)
     (setf knx-client::*seq-counter* 0)
@@ -345,7 +357,7 @@ In case of this the log must be checked."
     (is (= 1 knx-client::*seq-counter*))))
 
 (test send-write-request--seq-counter--rollover
-  (with-fixture env (nil nil)
+  (with-fixture env (nil nil nil)
     (answer usocket:socket-send t)
     (setf knx-client::*channel-id* 78)
     (setf knx-client::*seq-counter* 254)
@@ -356,7 +368,7 @@ In case of this the log must be checked."
     (is (= 0 knx-client::*seq-counter*))))
 
 (test send-read-request
-  (with-fixture env (nil nil)
+  (with-fixture env (nil nil nil)
     (answer usocket:socket-send t)
     (setf knx-client::*channel-id* 78)
     (setf knx-client::*seq-counter* 79)

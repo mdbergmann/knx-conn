@@ -23,6 +23,7 @@
            #:async-handler-receive
            #:start-async-receive
            #:make-async-handler
+           #:start-heartbeat
            ;; conditions
            #:knx-receive-error
            ))
@@ -44,26 +45,35 @@
 ;; global variables
 ;; ---------------------------------
 
+(defparameter *resp-wait-timeout-secs* 3
+  "Timeout for waiting for a response.")
+
+(defparameter *heartbeat-wait-timeout-secs* 10
+  "Timeout for waiting for a heartbeat response.")
+
+(defparameter *default-receive-knx-data-recur-delay-secs* 0
+  "Default delay in seconds for the recurring retrieval of KNX data.
+The default is 0 because there should be no delay.")
+
+(defparameter *receive-knx-data-recur-delay-secs*
+  *default-receive-knx-data-recur-delay-secs*
+  "Defines a delay in seconds for the recurring retrieval of KNX data.
+Only applicable if `start-receive` is true in `knx-conn-init`.")
+
+(defparameter *default-heartbeat-interval-secs* 60
+  "Default interval in seconds for sending a connection-state request to the KNXnet/IP gateway.")
+
+(defparameter *heartbeat-interval-secs* *default-heartbeat-interval-secs*
+  "Interval in seconds for sending a connection-state request to the KNXnet/IP gateway.")
+
 (defvar *channel-id* nil
   "The channel-id of the current tunnelling connection.")
 
 (defvar *seq-counter* 0
   "The sequence counter for the current tunnelling connection.")
 
-(defvar *resp-wait-timeout-secs* 3
-  "Timeout for waiting for a response.")
-
 (defvar *tunnel-request-listeners* nil
   "A list of functions to be called when a tunnelling request is received.")
-
-(defparameter *default-receive-knx-data-recur-delay-secs* 0
-  "Default delay in seconds for the recurring retrieval of KNX data.
-The default is 0 because there should be no delay.")
-
-(defvar *receive-knx-data-recur-delay-secs*
-  *default-receive-knx-data-recur-delay-secs*
-  "Defines a delay in seconds for the recurring retrieval of KNX data.
-Only applicable if `start-receive` is true in `knx-conn-init`.")
 
 (defvar *received-things* nil "Pool of received messages that are not handled otherwise.")
 
@@ -98,7 +108,9 @@ The error condition will be of type `knx-receive-error` and reflects just an err
   (! *async-handler* `(:send
                        . ,(make-descr-request *hpai-unbound-addr*)))
   (? *async-handler* `(:wait-on-resp-type
-                       . (knx-descr-response ,(get-universal-time)))))
+                       . (knx-descr-response
+                          ,(get-universal-time)
+                          ,*resp-wait-timeout-secs*))))
 
 (defun establish-tunnel-connection ()
   "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
@@ -111,7 +123,9 @@ If the connection is established successfully, the channel-id will be stored in 
   (let ((fut
           (? *async-handler*
              `(:wait-on-resp-type
-               . (knx-connect-response ,(get-universal-time))))))
+               . (knx-connect-response
+                  ,(get-universal-time)
+                  ,*resp-wait-timeout-secs*)))))
     (%handle-response-fut
      fut
      (lambda (response)
@@ -132,7 +146,9 @@ If the connection is established successfully, the channel-id will be stored in 
   (let ((fut
           (? *async-handler*
              `(:wait-on-resp-type
-               . (knx-disconnect-response ,(get-universal-time))))))
+               . (knx-disconnect-response
+                  ,(get-universal-time)
+                  ,*resp-wait-timeout-secs*)))))
     (%handle-response-fut
      fut
      (lambda (response)
@@ -152,7 +168,9 @@ This request should be sent every some seconds (i.e. 60) as a heart-beat to keep
   (! *async-handler* `(:send
                        . ,(make-connstate-request *channel-id*)))
   (? *async-handler* `(:wait-on-resp-type
-                       . (knx-connstate-response ,(get-universal-time)))))
+                       . (knx-connstate-response
+                          ,(get-universal-time)
+                          ,*resp-wait-timeout-secs*))))
 
 ;; ---------------------------------
 ;; tunnelling-request functions
@@ -210,21 +228,21 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
     (log:debug "Async-handler received msg: ~a" msg-sym)
     (let ((self act:*self*)
           (sender act:*sender*))
-      (labels ((timeout-elapsed-p (start-time)
+      (labels ((timeout-elapsed-p (start-time wait-time)
                  (> (get-universal-time)
-                    (+ *resp-wait-timeout-secs* start-time)))
+                    (+ wait-time start-time)))
                (doasync (dispatcher fun &optional (completed-fun nil))
                  (tasks:with-context ((act:context *async-handler*) dispatcher)
                    (if completed-fun
                        (tasks:task-async fun
                                          :on-complete-fun completed-fun)
                        (tasks:task-start fun))))
-               (wait-and-call-again (resp-type start-time)
+               (wait-and-call-again (resp-type start-time wait-time)
                  (doasync :waiter
                           (lambda ()
                             (sleep 0.2)
                             (! self `(:wait-on-resp-type
-                                      . (,resp-type ,start-time))
+                                      . (,resp-type ,start-time ,wait-time))
                                sender)))))
         (case msg-sym
           (:send
@@ -270,8 +288,8 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                   (push args *received-things*))))))
           
           (:wait-on-resp-type
-           (destructuring-bind (resp-type start-time) args
-             (when (timeout-elapsed-p start-time)
+           (destructuring-bind (resp-type start-time wait-time) args
+             (when (timeout-elapsed-p start-time wait-time)
                (log:debug "Time elapsed waiting for response of type: ~a" resp-type)
                (reply `(nil ,(make-condition
                               'knx-receive-error
@@ -285,17 +303,34 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                (let ((thing (pop *received-things*)))
                  (unless thing
                    (log:trace "No thing received yet")
-                   (wait-and-call-again resp-type start-time)
+                   (wait-and-call-again resp-type start-time wait-time)
                    (return))
                  (destructuring-bind (response err) thing
                    (log:debug "Popped thing: (resp:~a err:~a)" (type-of response) err)
                    (if (typep response resp-type)
                        (reply thing)
-                       (wait-and-call-again resp-type start-time))))))))))))
+                       (wait-and-call-again resp-type start-time wait-time)))))))
+
+          (:heartbeat
+           ;; extended wait timeout according to spec
+           (let ((*resp-wait-timeout-secs*
+                   *heartbeat-wait-timeout-secs*))
+             (send-connection-state))))))))
 
 (defun start-async-receive ()
   (assert *async-handler* nil "No async-handler set!")
   (! *async-handler* '(:receive . nil)))
+
+(defun start-heartbeat ()
+  (assert *async-handler* nil "No async-handler set!")
+  (let ((scheduler (asys:scheduler
+                    (ac:system
+                     (act:context *async-handler*)))))
+    (wt:schedule-recurring scheduler
+                           *heartbeat-interval-secs*
+                           *heartbeat-interval-secs*
+                           (lambda ()
+                             (! *async-handler* '(:heartbeat . nil))))))
 
 (defun make-async-handler (actor-context)
   (assert (null *async-handler*) nil "Async-handler already set!")
