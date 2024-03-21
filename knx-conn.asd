@@ -76,11 +76,12 @@ OK - make starting retrieve configurable
 OK - restructure code: folders knx-model, knx-msg
 OK - split knx-conn into: ip-client (dep: knx-model/knx-msg), knx-client (dep: ip-client),
     knx-conn (dep: knx-client)
-=> - add heartbeat (every 60 seconds) to keep connection alive
-- make starting heartbeat configurable
+OK - add heartbeat (every 60 seconds) to keep connection alive
+OK - make starting heartbeat configurable
+OK - connstate: check for up-to 10 seconds response delay
+- rework *rceived-things* to be a hash-table with key (req type) and value (the received response) that fits to the request. The entry is cleaned up after the response is received.
 - make with- macro for setting single value only (disabled retrieve and heartbeat)
-- connstate: check for up-to 10 seconds response delay
-- connstate: check for 3 failed requests
+- connstate (heartbeat): check for 3 failed requests
 - extract receive-handlers to separate functions.
 - allow hooks to be registered for value updates on certain group-addresses
 - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (Datum)
