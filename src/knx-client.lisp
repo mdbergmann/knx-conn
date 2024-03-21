@@ -196,7 +196,7 @@ Returns the request that was sent."
 ;; ---------------------------------
 
 (defun async-handler-receive (msg)
-  "Allows the folloing messages:
+  "Allows the following messages:
 
 - `(:send . <request>)` to send an knx request to the gateway.
 

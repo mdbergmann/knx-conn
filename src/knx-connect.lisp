@@ -25,20 +25,13 @@
                                             :receiver (:workers 1)
                                             :waiter (:workers 1))
                                            :scheduler
-                                           (:enabled :false))))
-    (unless *async-handler*
-      (log:info "Creating async-handler...")
-      (%make-handler))))
+                                           (:enabled :false))))))
 
 (defun %shutdown-asys ()
   (log:info "Shutting down actor system...")
   (when *asys*
     (ac:shutdown *asys* :wait t)
-    (setf *asys* nil))
-  (when *async-handler*
-    (setf *async-handler* nil))
-  (when *tunnel-request-listeners*
-    (setf *tunnel-request-listeners* nil)))
+    (setf *asys* nil)))
 
 (defun %register-tunnel-request-listener (listener-fun)
   "Register the given `listener-fun` to be called when a tunnelling request is received.
@@ -47,10 +40,6 @@ Make sure that the function is not doing lon-running operations or else spawn a 
   (check-type listener-fun function)
   (log:info "Registering listener...")
   (push listener-fun *tunnel-request-listeners*))
-
-(defun %make-handler ()
-  (unless *async-handler*
-    ))
 
 ;; ---------------------------------
 ;; top-level functions
@@ -66,9 +55,12 @@ Make sure that the function is not doing lon-running operations or else spawn a 
     (dolist (listener-fun tunnel-request-listeners)
       (%register-tunnel-request-listener listener-fun)))
   (%ensure-asys)
+  (unless *async-handler*
+    (log:info "Creating async-handler...")
+    (make-async-handler *asys*))
   (when start-receiving
-    (start-async-receive))
-  )
+    (log:info "Starting async-receive...")
+    (start-async-receive)))
 
 (defun knx-conn-destroy ()
   "Close the KNX connection and destroy the internal structures."
@@ -76,4 +68,7 @@ Make sure that the function is not doing lon-running operations or else spawn a 
   (ip-disconnect)
   (when *asys*
     (%shutdown-asys))
-  )
+  (when *async-handler*
+    (setf *async-handler* nil))
+  (when *tunnel-request-listeners*
+    (setf *tunnel-request-listeners* nil)))

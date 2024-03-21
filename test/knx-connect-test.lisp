@@ -15,32 +15,6 @@
 (log:config :debug)
 (log:config '(sento) :warn)
 
-(def-fixture env (listener-fun start-receive)
-  (let ((resp-wait-timeout-store
-          knxc::*resp-wait-timeout-secs*)
-        (channel-id
-          knxc::*channel-id*))
-    ;; high value to not recur too much
-    (setf knxc::*receive-knx-data-recur-delay-secs* .5)
-    (with-mocks ()
-      (answer usocket:socket-connect 'dummy)
-      (answer usocket:socket-close t)      
-      (unwind-protect
-           (progn
-             (knx-conn-init "12.23.34.45"
-                            :start-receiving start-receive
-                            :tunnel-request-listeners
-                            (if listener-fun
-                                (list listener-fun)
-                                nil))
-             (&body))
-        (progn
-          (knx-conn-destroy)
-          (setf knxc::*resp-wait-timeout-secs* resp-wait-timeout-store)
-          (setf knxc::*receive-knx-data-recur-delay-secs* 0)
-          (setf knxc::*channel-id* channel-id)
-          (setf knxc::*seq-counter* 0))))))
-
 ;; --------------------------------------
 ;; initialize
 ;; --------------------------------------
@@ -61,7 +35,10 @@
     (is (= 1 (length (invocations 'usocket:socket-connect))))
     (is (= 1 (length (invocations 'usocket:socket-close))))
     (is (eq ip-client::*conn* nil))
-    (is (eq knxc::*asys* nil))))
+    (is (eq knxc::*asys* nil))
+    (is (eql knx-client:*receive-knx-data-recur-delay-secs* 0))
+    (is (eq knx-client:*tunnel-request-listeners* nil))
+    (is (eq knx-client:*async-handler* nil))))
 
 (test init--no-connect-when-already-connected
   (let ((ip-client::*conn* 'dummy))
@@ -79,7 +56,8 @@
 
 (test init--no-init-asys-when-already-initialized
   (let ((knxc::*asys* 'dummy)
-        (ip-client::*conn* nil))
+        (ip-client::*conn* nil)
+        (knx-client:*async-handler* 'dummy))
     (with-mocks ()
       (answer usocket:socket-connect 'new)
       (answer asys:make-actor-system 'foo)
@@ -98,12 +76,14 @@
     (answer usocket:socket-receive #())
     (unwind-protect
          (progn
-           (setf knxc::*receive-knx-data-recur-delay-secs* .5) ; delay things a bit only
+           (setf knx-client:*receive-knx-data-recur-delay-secs* .5) ; delay things a bit only
            (knx-conn-init "12.23.34.45"
                           :start-receiving t)
            (is-true (await-cond 1.5
                       (> (length (invocations 'usocket:socket-receive)) 1))))
-      (knx-conn-destroy))))
+      (progn
+        (knx-conn-destroy)
+        (setf knx-client:*receive-knx-data-recur-delay-secs* 0)))))
 
 (test init--no-start-async-receiving--does-not-start-receiving
   (let ((knxc::*asys* nil)
