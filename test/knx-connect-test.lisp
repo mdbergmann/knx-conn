@@ -121,4 +121,4 @@
       (progn
         (knx-conn-destroy)
         (setf knx-client::*heartbeat-interval-secs*
-              knx-client::*default-heartbeat-interval-secs*)))))
+              knx-client::+default-heartbeat-interval-secs+)))))

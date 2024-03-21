@@ -60,10 +60,10 @@ The default is 0 because there should be no delay.")
   "Defines a delay in seconds for the recurring retrieval of KNX data.
 Only applicable if `start-receive` is true in `knx-conn-init`.")
 
-(defparameter *default-heartbeat-interval-secs* 60
+(defconstant +default-heartbeat-interval-secs+ 60
   "Default interval in seconds for sending a connection-state request to the KNXnet/IP gateway.")
 
-(defparameter *heartbeat-interval-secs* *default-heartbeat-interval-secs*
+(defparameter *heartbeat-interval-secs* +default-heartbeat-interval-secs+
   "Interval in seconds for sending a connection-state request to the KNXnet/IP gateway.")
 
 (defvar *channel-id* nil
@@ -223,7 +223,7 @@ Returns the request that was sent."
 - `(:received . <result>)` looks at what is the type of the received.
 For `knx-tunnelling-request`s the registered listener functions will be called. All else will be enqueued in the `*received-things*` list, for `:wait-on-resp-type` to check.
 
-- `(:wait-on-resp-type . (<resp-type> <start-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + *resp-wait-timeout-secs*` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request.
+- `(:wait-on-resp-type . (<resp-type> <start-time> <wait-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + <wait-time> (defaults to *resp-wait-timeout-secs*)` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request.
 
 - `(:heartbeat . nil)` to send a connection-state request to the KNXnet/IP gateway."
   (destructuring-bind (msg-sym . args) msg
