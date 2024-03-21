@@ -23,9 +23,7 @@
     (setf *asys* (asys:make-actor-system '(:dispatchers
                                            (:shared (:workers 2)
                                             :receiver (:workers 1)
-                                            :waiter (:workers 1))
-                                           :scheduler
-                                           (:enabled :false))))))
+                                            :waiter (:workers 1)))))))
 
 (defun %shutdown-asys ()
   (log:info "Shutting down actor system...")

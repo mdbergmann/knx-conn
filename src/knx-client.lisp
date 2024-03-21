@@ -48,7 +48,7 @@
 (defparameter *resp-wait-timeout-secs* 3
   "Timeout for waiting for a response.")
 
-(defparameter *heartbeat-wait-timeout-secs* 10
+(defparameter *heartbeat-resp-wait-timeout-secs* 10
   "Timeout for waiting for a heartbeat response.")
 
 (defparameter *default-receive-knx-data-recur-delay-secs* 0
@@ -223,7 +223,9 @@ Returns the request that was sent."
 - `(:received . <result>)` looks at what is the type of the received.
 For `knx-tunnelling-request`s the registered listener functions will be called. All else will be enqueued in the `*received-things*` list, for `:wait-on-resp-type` to check.
 
-- `(:wait-on-resp-type . (<resp-type> <start-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + *resp-wait-timeout-secs*` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request."
+- `(:wait-on-resp-type . (<resp-type> <start-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + *resp-wait-timeout-secs*` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request.
+
+- `(:heartbeat . nil)` to send a connection-state request to the KNXnet/IP gateway."
   (destructuring-bind (msg-sym . args) msg
     (log:debug "Async-handler received msg: ~a" msg-sym)
     (let ((self act:*self*)
@@ -314,7 +316,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
           (:heartbeat
            ;; extended wait timeout according to spec
            (let ((*resp-wait-timeout-secs*
-                   *heartbeat-wait-timeout-secs*))
+                   *heartbeat-resp-wait-timeout-secs*))
              (send-connection-state))))))))
 
 (defun start-async-receive ()
