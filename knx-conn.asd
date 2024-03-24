@@ -80,8 +80,8 @@ OK - add heartbeat (every 60 seconds) to keep connection alive
 OK - make starting heartbeat configurable
 OK - connstate: check for up-to 10 seconds response delay
 OK - make with- macro for setting single value only (disabled retrieve and heartbeat)
-=> - do tunnel connection in knx-conn-init
-- do tunnel close in knx-conn-destroy
+OK - do tunnel connection in knx-conn-init
+OK - do tunnel close in knx-conn-destroy
 - rework *rceived-things* to be a hash-table with key (req type) and value (the received response) that fits to the request. The entry is cleaned up after the response is received.
 - connstate (heartbeat): check for 3 failed requests
 - extract receive-handlers to separate functions.

@@ -76,8 +76,6 @@ I.e. the value for switches, dimmers, temperature sensors, etc. are all encoded 
 ;; DPT1
 ;; ------------------------------
 
-;;(deftype dpt-1.001 ())
-
 (defstruct (dpt1 (:include dpt)
                  (:constructor %make-dpt1))
   "
@@ -103,9 +101,7 @@ Range:      b = {0 = off, 1 = on}"
   (let ((value (if (zerop (aref byte-vec 0))
                    :off
                    :on)))
-    (%make-dpt1 :value-type value-type
-                :value value
-                :raw-value (aref byte-vec 0))))
+    (make-dpt1 value-type value)))
 
 (defun make-dpt1 (value-sym value)
   "supported `value-sym': `(or :switch 'dpt-1.001)` as switch with `:on` or `:off` values."
@@ -115,7 +111,9 @@ Range:      b = {0 = off, 1 = on}"
                  :value value
                  :raw-value (ecase value
                               (:on 1)
-                              (:off 0))))))
+                              (:off 0))))
+    (t (error 'type-error :datum
+              (format nil "Unsupported value type: ~a" value-sym)))))
 
 ;; ------------------------------
 ;; DPT9

@@ -51,16 +51,15 @@ Make sure that the function is not doing lon-running operations or else spawn a 
   "Initialize and setup the KNX connection and other internal structures.
 It will make an UDP connection to KNX/IP gateway and establish a tunnelling connection."
   (log:info "Initializing KNX...")
-  (ip-connect host port)
-  (unless (ip-connected-p)
+  (unless (ip-connect host port)
     (error "Could not connect to KNX/IP"))
-  (when tunnel-request-listeners
-    (dolist (listener-fun tunnel-request-listeners)
-      (%register-tunnel-request-listener listener-fun)))
   (%ensure-asys)
   (unless *async-handler*
     (log:info "Creating async-handler...")
     (make-async-handler *asys*))
+  (when tunnel-request-listeners
+    (dolist (listener-fun tunnel-request-listeners)
+      (%register-tunnel-request-listener listener-fun)))
   (when start-receive
     (log:info "Starting async-receive...")
     (start-async-receive))
@@ -74,12 +73,14 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
 (defun knx-conn-destroy ()
   "Close the KNX connection and destroy the internal structures."
   (log:info "Destroying KNX...")
+  ;; close stuff
   (ignore-errors
    (close-tunnel-connection))
   (ignore-errors
    (ip-disconnect))
   (ignore-errors
    (%shutdown-asys))
+  ;; reset stuff
   (when *async-handler*
     (setf *async-handler* nil))
   (when *tunnel-request-listeners*
