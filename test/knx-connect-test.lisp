@@ -123,7 +123,7 @@
         (setf knx-client::*heartbeat-interval-secs*
               knx-client::+default-heartbeat-interval-secs+)))))
 
-(test with-knx-ip--write-value--ok
+(test with-knx/ip--write-value--ok
   (setf knxc::*asys* nil
         knx-client::*channel-id* nil
         ip-client::*conn* nil)
@@ -163,7 +163,7 @@
       (answer ip-client:ip-disconnect
         (setf ip-client::*conn* nil))
 
-      (with-knx-ip ("12.23.34.45" :port 1234)
+      (with-knx/ip ("12.23.34.45" :port 1234)
         (write-value "1/2/3"
                      'dpt:dpt-1.001
                      t))
@@ -183,7 +183,7 @@
       (is (= (length (invocations 'ip-client:ip-disconnect)) 1))
       )))
 
-(test with-knx-ip--error-on-ip-connect-should-cleanup
+(test with-knx/ip--error-on-ip-connect-should-cleanup
   (setf knxc::*asys* nil
         knx-client::*channel-id* nil
         ip-client::*conn* nil)
@@ -197,7 +197,7 @@
 
     (handler-case
         (progn
-          (with-knx-ip ("12.23.34.45" :port 1234)
+          (with-knx/ip ("12.23.34.45" :port 1234)
             (write-value "1/2/3"
                          'dpt:dpt-1.001
                          t))
@@ -212,7 +212,7 @@
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 0))
     (is (= (length (invocations 'ip-client:ip-disconnect)) 1)))
 
-(test with-knx-ip--error-on-establish-tunnel-connection
+(test with-knx/ip--error-on-establish-tunnel-connection
   (setf knxc::*asys* nil
         knx-client::*channel-id* nil
         ip-client::*conn* nil)
@@ -249,7 +249,7 @@
 
       (handler-case
           (progn
-            (with-knx-ip ("12.23.34.45" :port 1234)
+            (with-knx/ip ("12.23.34.45" :port 1234)
               (write-value "1/2/3"
                            'dpt:dpt-1.001
                            t))

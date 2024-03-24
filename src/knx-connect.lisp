@@ -3,7 +3,7 @@
   (:nicknames :knxc)
   (:export #:knx-conn-init
            #:knx-conn-destroy
-           #:with-knx-ip
+           #:with-knx/ip
            #:write-value))
 
 (in-package :knx-conn.knx-connect)
@@ -89,7 +89,7 @@ Make sure that the function is not doing lon-running operations or else spawn a 
                         ((eq dpt-type 'dpt:dpt-1.001)
                          (dpt:make-dpt1 dpt-type (if value :on :off))))))
 
-(defmacro with-knx-ip ((host &key (port 3671)) &body body)
+(defmacro with-knx/ip ((host &key (port 3671)) &body body)
   "Macro that initialized and destroys a KNX/IP connection.
 Use the `body' to perform operations on the KNX connection, i.e. `write-value'."
   `(unwind-protect
