@@ -10,6 +10,7 @@
   (:export #:retrieve-descr-info
            #:establish-tunnel-connection
            #:close-tunnel-connection
+           #:tunnel-connection-established-p
            #:send-connection-state
            #:send-write-request
            #:send-read-request
@@ -164,6 +165,10 @@ If the connection is established successfully, the channel-id will be stored in 
                (log:info "Tunnel connection closed.")
                (setf *channel-id* nil))))))
     fut))
+
+(defun tunnel-connection-established-p ()
+  "Returns true if a tunnel connection is established."
+  (integerp *channel-id*))
 
 (defun send-connection-state ()
   "Sends a connection-state request to the KNXnet/IP gateway. The response to this request will be received asynchronously.

@@ -125,6 +125,7 @@
 
 (test with-knx-ip--write-value--ok
   (setf knxc::*asys* nil
+        knx-client::*channel-id* nil
         ip-client::*conn* nil)
   (let ((connect-request-sent)
         (write-data-request-sent)
@@ -173,6 +174,7 @@
       (is-true (await-cond 1.5 disconnect-request-sent))
 
       (is-false ip-client::*conn*)
+      (is-false knx-client::*channel-id*)
       
       (is (= (length (invocations 'ip-client:ip-connect)) 1))
       (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))
@@ -183,6 +185,7 @@
 
 (test with-knx-ip--error-on-ip-connect-should-cleanup
   (setf knxc::*asys* nil
+        knx-client::*channel-id* nil
         ip-client::*conn* nil)
   ;; slow things down, the mocks are not blocking
   (setf knx-client::*receive-knx-data-recur-delay-secs* 1.0)
@@ -208,4 +211,62 @@
     ;; error on ip level, no requests should go out.
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 0))
     (is (= (length (invocations 'ip-client:ip-disconnect)) 1)))
-  
+
+(test with-knx-ip--error-on-establish-tunnel-connection
+  (setf knxc::*asys* nil
+        knx-client::*channel-id* nil
+        ip-client::*conn* nil)
+  (let ((connect-request-sent)
+        (write-data-request-sent)
+        (connect-response-received)
+        (disconnect-request-sent))
+    ;; slow things down, the mocks are not blocking
+    (setf knx-client::*receive-knx-data-recur-delay-secs* 1.0)
+    (with-mocks ()
+      (answer ip-client:ip-connect
+        (setf ip-client::*conn* 'dummy))
+      (answer (ip-client:ip-send-knx-data req)
+        (etypecase req
+          (connect:knx-connect-request
+           (setf connect-request-sent t))))
+      (answer ip-client:ip-receive-knx-data
+        (when (and connect-request-sent (not connect-response-received))
+          (setf connect-response-received t)
+          (let ((resp (connect::%make-connect-response
+                       :header (make-header connect::+knx-connect-response+ 6)
+                       :channel-id 1
+                       :status 99
+                       :hpai hpai::*hpai-unbound-addr*
+                       :crd (crd::%make-crd
+                             :conn-type
+                             #x04
+                             :individual-address
+                             (address:make-individual-address "1.2.3")))))
+            (format t "Returning connect response ~a~%" resp)
+            `(,resp nil))))
+      (answer ip-client:ip-disconnect
+        (setf ip-client::*conn* nil))
+
+      (handler-case
+          (progn
+            (with-knx-ip ("12.23.34.45" :port 1234)
+              (write-value "1/2/3"
+                           'dpt:dpt-1.001
+                           t))
+            (fail "Should not get here!"))
+        (error (c)
+          (is (equal (format nil "~a" c)
+                     "Could not establish tunnel connection!"))))
+
+      (is-true (await-cond 1.5 connect-request-sent))
+      (is-true (await-cond 1.5 connect-response-received))
+      (is-false (await-cond 0.5 write-data-request-sent))
+      (is-false (await-cond 0.5 disconnect-request-sent))
+      
+      (is (= (length (invocations 'ip-client:ip-connect)) 1))
+      (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))
+      ;; connect
+      (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
+      (is (= (length (invocations 'ip-client:ip-disconnect)) 1)))))
+
+;; TODO: test for when write fails, should cleanup

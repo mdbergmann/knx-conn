@@ -1,5 +1,5 @@
 (defpackage :knx-conn.knx-connect
-  (:use :cl :ip-client :knx-client)
+  (:use :cl :ip-client :knx-client :sento.future)
   (:nicknames :knxc)
   (:export #:knx-conn-init
            #:knx-conn-destroy
@@ -99,7 +99,9 @@ Use the `body' to perform operations on the KNX connection, i.e. `write-value'."
                                :enable-heartbeat nil)
           (unless (ip-connected-p)
             (error "Could not connect to KNX/IP"))
-          (future:fawait (establish-tunnel-connection) :timeout 5)
+          (fawait (establish-tunnel-connection) :timeout 10)
+          (unless (tunnel-connection-established-p)
+            (error "Could not establish tunnel connection!"))
           ,@body
-          (future:fawait (close-tunnel-connection) :timeout 5))
+          (fawait (close-tunnel-connection) :timeout 10))
      (knx-conn-destroy)))
