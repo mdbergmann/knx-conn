@@ -76,6 +76,8 @@ I.e. the value for switches, dimmers, temperature sensors, etc. are all encoded 
 ;; DPT1
 ;; ------------------------------
 
+;;(deftype dpt-1.001 ())
+
 (defstruct (dpt1 (:include dpt)
                  (:constructor %make-dpt1))
   "
@@ -106,13 +108,14 @@ Range:      b = {0 = off, 1 = on}"
                 :raw-value (aref byte-vec 0))))
 
 (defun make-dpt1 (value-sym value)
-  (ecase value-sym
-    (:switch
-        (%make-dpt1 :value-type 'dpt-1.001
-                    :value value
-                    :raw-value (ecase value
-                                 (:on 1)
-                                 (:off 0))))))
+  "supported `value-sym': `(or :switch 'dpt-1.001)` as switch with `:on` or `:off` values."
+  (cond
+    ((member value-sym '(:switch dpt-1.001))
+     (%make-dpt1 :value-type 'dpt-1.001
+                 :value value
+                 :raw-value (ecase value
+                              (:on 1)
+                              (:off 0))))))
 
 ;; ------------------------------
 ;; DPT9

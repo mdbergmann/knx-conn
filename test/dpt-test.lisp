@@ -17,6 +17,10 @@
     (is (eq (dpt-value-type dpt) 'dpt-1.001))
     (is (eq (dpt-value dpt) :on))
     (is (equalp #(1) (knxobj:to-byte-seq dpt))))
+  (let ((dpt (make-dpt1 'dpt-1.001 :on)))
+    (is (eq (dpt-value-type dpt) 'dpt-1.001))
+    (is (eq (dpt-value dpt) :on))
+    (is (equalp #(1) (knxobj:to-byte-seq dpt))))
   ;; off
   (let ((dpt (make-dpt1 :switch :off)))
     (is (eq (dpt-value dpt) :off))

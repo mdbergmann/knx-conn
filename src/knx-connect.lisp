@@ -3,7 +3,8 @@
   (:nicknames :knxc)
   (:export #:knx-conn-init
            #:knx-conn-destroy
-           ))
+           #:with-knx-ip
+           #:write-value))
 
 (in-package :knx-conn.knx-connect)
 
@@ -67,10 +68,36 @@ Make sure that the function is not doing lon-running operations or else spawn a 
 (defun knx-conn-destroy ()
   "Close the KNX connection and destroy the internal structures."
   (log:info "Destroying KNX...")
-  (ip-disconnect)
-  (when *asys*
-    (%shutdown-asys))
+  (ignore-errors
+   (ip-disconnect))
+  (ignore-errors
+   (%shutdown-asys))
   (when *async-handler*
     (setf *async-handler* nil))
   (when *tunnel-request-listeners*
     (setf *tunnel-request-listeners* nil)))
+
+;; ---------------------------------
+;; convenience functions and macro DSL
+;; ---------------------------------
+
+(defun write-value (group-address dpt-type value)
+  "Write the given `value` to the `group-address` with the given `dpt-type`."
+  (log:info "Writing value: ~a (~a) to ga: ~a" value dpt-type group-address)
+  (send-write-request (address:make-group-address group-address)
+                      (cond
+                        ((eq dpt-type 'dpt:dpt-1.001)
+                         (dpt:make-dpt1 dpt-type (if value :on :off))))))
+
+(defmacro with-knx-ip ((host &key (port 3671)) &body body)
+  "Macro that initialized and destroys a KNX IP connection.
+Use the `body' to perform operations on the KNX connection, i.e. `write-value'."
+  `(unwind-protect
+        (progn
+          (knx-conn-init ,host :port ,port
+                               :start-receive t
+                               :enable-heartbeat nil)
+          (future:fawait (establish-tunnel-connection) :timeout 5)
+          ,@body
+          (future:fawait (close-tunnel-connection) :timeout 5))
+     (knx-conn-destroy)))

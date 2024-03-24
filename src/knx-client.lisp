@@ -232,7 +232,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
 
 - `(:heartbeat . nil)` to send a connection-state request to the KNXnet/IP gateway."
   (destructuring-bind (msg-sym . args) msg
-    (log:debug "Async-handler received msg: ~a" msg-sym)
+    (log:trace "Async-handler received msg: ~a" msg-sym)
     (let ((self act:*self*)
           (sender act:*sender*))
       (labels ((timeout-elapsed-p (start-time resp-wait-time)
@@ -268,11 +268,14 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                         (sleep *receive-knx-data-recur-delay-secs*)
                         (! self `(:receive . nil))))
                     (lambda (result)
-                      (when (and result (car result))
-                        (log:debug "KNX response received: (~a ~a)"
-                                   (type-of (first result))
-                                   (second result))
-                        (! self `(:received . ,result))))))
+                      (handler-case
+                          (when (and result (car result))
+                            (log:debug "KNX response received: (~a ~a)"
+                                       (type-of (first result))
+                                       (second result))
+                            (! self `(:received . ,result)))
+                        (error (c)
+                          (log:warn "Error on receiving: ~a" c))))))
 
           (:received
            (destructuring-bind (received err) args
