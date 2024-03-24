@@ -29,10 +29,10 @@
 
 (defun ip-disconnect ()
   "Disconnect from the KNXnet/IP gateway."
-  (when *conn*
-    (log:info "Disconnecting from KNXnet/IP gateway")
-    (usocket:socket-close *conn*)
-    (setf *conn* nil)))
+  (assert *conn* nil "Not connected!")
+  (log:info "Disconnecting from KNXnet/IP gateway")
+  (usocket:socket-close *conn*)
+  (setf *conn* nil))
 
 (defun ip-connected-p ()
   "Return whether the client is connected to the KNXnet/IP gateway."
@@ -40,7 +40,7 @@
 
 (defun ip-send-knx-data (request)
   "Send the given `request` to the KNXnet/IP gateway."
-  (assert *conn* nil "No connection!")
+  (assert *conn* nil "Not connected!")
   (log:debug "Sending obj: ~a" request)
   (let ((req-bytes (to-byte-seq request)))
     (check-type req-bytes (simple-array (unsigned-byte 8) (*)))
@@ -51,7 +51,7 @@
 (defun ip-receive-knx-data ()
   "Receive a KNXnet/IP request from the KNXnet/IP gateway.
 Returns a list of the received object and an error condition, if any."
-  (assert *conn* nil "No connection!")
+  (assert *conn* nil "Not connected!")
   (log:debug "Receiving data...")
   (let ((buf (make-array 1024 :element-type 'octet)))
     (handler-case 

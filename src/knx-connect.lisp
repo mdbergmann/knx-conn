@@ -48,9 +48,12 @@ Make sure that the function is not doing lon-running operations or else spawn a 
                              (start-receive t)
                              (enable-heartbeat t)
                              (tunnel-request-listeners nil))
-  "Initialize and setup the KNX connection and other internal structures."
+  "Initialize and setup the KNX connection and other internal structures.
+It will make an UDP connection to KNX/IP gateway and establish a tunnelling connection."
   (log:info "Initializing KNX...")
   (ip-connect host port)
+  (unless (ip-connected-p)
+    (error "Could not connect to KNX/IP"))
   (when tunnel-request-listeners
     (dolist (listener-fun tunnel-request-listeners)
       (%register-tunnel-request-listener listener-fun)))
@@ -61,6 +64,9 @@ Make sure that the function is not doing lon-running operations or else spawn a 
   (when start-receive
     (log:info "Starting async-receive...")
     (start-async-receive))
+  (fawait (establish-tunnel-connection) :timeout 10)
+  (unless (tunnel-connection-established-p)
+    (error "Could not establish tunnel connection!"))
   (when enable-heartbeat
     (log:info "Starting heartbeat...")
     (start-heartbeat)))
@@ -69,13 +75,19 @@ Make sure that the function is not doing lon-running operations or else spawn a 
   "Close the KNX connection and destroy the internal structures."
   (log:info "Destroying KNX...")
   (ignore-errors
+   (close-tunnel-connection))
+  (ignore-errors
    (ip-disconnect))
   (ignore-errors
    (%shutdown-asys))
   (when *async-handler*
     (setf *async-handler* nil))
   (when *tunnel-request-listeners*
-    (setf *tunnel-request-listeners* nil)))
+    (setf *tunnel-request-listeners* nil))
+  (setf knx-client:*receive-knx-data-recur-delay-secs*
+        knx-client:*default-receive-knx-data-recur-delay-secs*)
+  (setf knx-client::*heartbeat-interval-secs*
+        knx-client::+default-heartbeat-interval-secs+))
 
 ;; ---------------------------------
 ;; convenience functions and macro DSL
@@ -97,11 +109,5 @@ Use the `body' to perform operations on the KNX connection, i.e. `write-value'."
           (knx-conn-init ,host :port ,port
                                :start-receive t
                                :enable-heartbeat nil)
-          (unless (ip-connected-p)
-            (error "Could not connect to KNX/IP"))
-          (fawait (establish-tunnel-connection) :timeout 10)
-          (unless (tunnel-connection-established-p)
-            (error "Could not establish tunnel connection!"))
-          ,@body
-          (fawait (close-tunnel-connection) :timeout 10))
+          ,@body)
      (knx-conn-destroy)))
