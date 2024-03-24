@@ -90,13 +90,15 @@ Make sure that the function is not doing lon-running operations or else spawn a 
                          (dpt:make-dpt1 dpt-type (if value :on :off))))))
 
 (defmacro with-knx-ip ((host &key (port 3671)) &body body)
-  "Macro that initialized and destroys a KNX IP connection.
+  "Macro that initialized and destroys a KNX/IP connection.
 Use the `body' to perform operations on the KNX connection, i.e. `write-value'."
   `(unwind-protect
         (progn
           (knx-conn-init ,host :port ,port
                                :start-receive t
                                :enable-heartbeat nil)
+          (unless (ip-connected-p)
+            (error "Could not connect to KNX/IP"))
           (future:fawait (establish-tunnel-connection) :timeout 5)
           ,@body
           (future:fawait (close-tunnel-connection) :timeout 5))

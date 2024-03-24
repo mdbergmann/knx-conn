@@ -4,6 +4,7 @@
   (:nicknames :ip-client)
   (:export #:ip-connect
            #:ip-disconnect
+           #:ip-connected-p
            #:ip-send-knx-data
            #:ip-receive-knx-data))
 
@@ -32,6 +33,10 @@
     (log:info "Disconnecting from KNXnet/IP gateway")
     (usocket:socket-close *conn*)
     (setf *conn* nil)))
+
+(defun ip-connected-p ()
+  "Return whether the client is connected to the KNXnet/IP gateway."
+  (not (null *conn*)))
 
 (defun ip-send-knx-data (request)
   "Send the given `request` to the KNXnet/IP gateway."

@@ -180,3 +180,32 @@
       (is (= (length (invocations 'ip-client:ip-send-knx-data)) 3))
       (is (= (length (invocations 'ip-client:ip-disconnect)) 1))
       )))
+
+(test with-knx-ip--error-on-ip-connect-should-cleanup
+  (setf knxc::*asys* nil
+        ip-client::*conn* nil)
+  ;; slow things down, the mocks are not blocking
+  (setf knx-client::*receive-knx-data-recur-delay-secs* 1.0)
+  (with-mocks ()
+    (answer ip-client:ip-connect nil)
+    (answer ip-client:ip-receive-knx-data nil)
+    (answer ip-client:ip-send-knx-data nil)
+    (answer ip-client:ip-disconnect nil)
+
+    (handler-case
+        (progn
+          (with-knx-ip ("12.23.34.45" :port 1234)
+            (write-value "1/2/3"
+                         'dpt:dpt-1.001
+                         t))
+          (fail "Should not get here!"))
+      (error (c)
+        (is (equal (format nil "~a" c)
+                   "Could not connect to KNX/IP"))))
+
+    (is (= (length (invocations 'ip-client:ip-connect)) 1)))
+    (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))
+    ;; error on ip level, no requests should go out.
+    (is (= (length (invocations 'ip-client:ip-send-knx-data)) 0))
+    (is (= (length (invocations 'ip-client:ip-disconnect)) 1)))
+  
