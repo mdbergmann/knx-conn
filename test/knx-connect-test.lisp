@@ -300,6 +300,8 @@
     
       (setf knx-client::*receive-knx-data-recur-delay-secs* 1.0)
       (with-knx/ip ("12.23.34.45")
-        (let ((value (request-value "1/2/3" 'dpt:dpt-1.001))) ;;(fawait x :timeout 10.0)))
-          (is (eq value t))
+        (let ((value (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
+                             :timeout 10.0)))
+          (format t "value: ~a~%" value)
+          (is (eq value :on))
           )))))
