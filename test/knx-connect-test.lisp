@@ -258,3 +258,48 @@
       (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
       (is (= (length (invocations 'ip-client:ip-disconnect)) 1)))))
 
+(test request-value--wait-for-value
+  (with-mocks ()
+    (let ((response-to-receive))
+      (answer ip-client:ip-connect
+        (setf ip-client::*conn* 'dummy))
+      (answer (ip-client:ip-send-knx-data req)
+        (etypecase req
+          (connect:knx-connect-request
+           (setf knx-client::*channel-id* 1)
+           (setf response-to-receive
+                 (connect::%make-connect-response
+                  :header (make-header connect::+knx-connect-response+ 6)
+                  :channel-id 1
+                  :status 0
+                  :hpai hpai::*hpai-unbound-addr*
+                  :crd (crd::%make-crd
+                        :conn-type
+                        #x04
+                        :individual-address
+                        (address:make-individual-address "1.2.3")))))
+          (tunnelling:knx-tunnelling-request
+           (setf response-to-receive
+                 (tunnelling:make-tunnelling-request
+                  :channel-id 1
+                  :seq-counter 1
+                  :cemi (cemi:make-default-cemi
+                         :message-code +cemi-mc-l_data.req+
+                         :dest-address (address:make-group-address "1/2/3")
+                         :apci (make-apci-gv-write)
+                         :dpt (dpt:make-dpt1 :switch :on)))))
+          (connect:knx-disconnect-request
+           (setf knx-client::*channel-id* nil))))
+      (answer ip-client:ip-receive-knx-data
+        (when response-to-receive
+          (prog1
+              `(,response-to-receive nil)
+            (setf response-to-receive nil))))
+      (answer ip-client:ip-disconnect
+        (setf ip-client::*conn* nil))    
+    
+      (setf knx-client::*receive-knx-data-recur-delay-secs* 1.0)
+      (with-knx/ip ("12.23.34.45")
+        (let ((value (request-value "1/2/3" 'dpt:dpt-1.001))) ;;(fawait x :timeout 10.0)))
+          (is (eq value t))
+          )))))

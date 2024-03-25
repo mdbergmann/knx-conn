@@ -291,7 +291,8 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                 (progn
                   (log:debug "Notifying listeners of received tunnelling request...")
                   (dolist (listener-fun *tunnel-request-listeners*)
-                    (funcall listener-fun received))))
+                    (ignore-errors
+                     (funcall listener-fun received)))))
                (knx-disconnect-request
                 (progn
                   (log:info "Received ip-disconnect request.")

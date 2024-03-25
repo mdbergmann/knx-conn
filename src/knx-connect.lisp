@@ -1,10 +1,12 @@
 (defpackage :knx-conn.knx-connect
-  (:use :cl :ip-client :knx-client :sento.future)
+  (:use :cl :ip-client :knx-client :knxobj :cemi :tunnelling :connect :address :dpt
+   :sento.future)
   (:nicknames :knxc)
   (:export #:knx-conn-init
            #:knx-conn-destroy
            #:with-knx/ip
-           #:write-value))
+           #:write-value
+           #:request-value))
 
 (in-package :knx-conn.knx-connect)
 
@@ -39,6 +41,12 @@ Make sure that the function is not doing lon-running operations or else spawn a 
   (check-type listener-fun function)
   (log:info "Registering listener...")
   (push listener-fun *tunnel-request-listeners*))
+
+(defun %remove-tunnel-request-listener (listener-fun)
+  "Remove the given `listener-fun` from the list of tunnelling request listeners."
+  (log:info "Removing listener...")
+  (setf *tunnel-request-listeners*
+        (remove listener-fun *tunnel-request-listeners*)))
 
 ;; ---------------------------------
 ;; top-level functions
@@ -101,6 +109,38 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
                       (cond
                         ((eq dpt-type 'dpt:dpt-1.001)
                          (dpt:make-dpt1 dpt-type (if value :on :off))))))
+
+(defun request-value (group-address dpt-type)
+  "Request the value of the given `group-address` with the given `dpt-type`."
+  (log:info "Requesting value for ga: ~a" group-address)
+  (let* ((requested-ga (make-group-address group-address))
+         (requested-value)
+         (listener-fun (lambda (req)
+                         (handler-case
+                             (let* ((cemi (tunnelling-request-cemi req))
+                                    (ga (cemi-destination-addr cemi)))
+                               (log:debug "Received request for ga: ~a" ga)
+                               (when (equalp ga requested-ga)
+                                 (log:debug "Matches requested ga: ~a" group-address)
+                                 (let* ((dpt (etypecase (cemi-data cemi)
+                                               (dpt
+                                                (cemi-data cemi))
+                                               ((vector octet)
+                                                (parse-to-dpt dpt-type
+                                                              (cemi-data cemi)))))
+                                        (value (dpt-value dpt)))
+                                   (log:debug "Received requested value: ~a for ga: ~a"
+                                              dpt group-address)
+                                   (setf requested-value value))))
+                           (error (e)
+                             (log:error "Error in listener-fun: ~a" e)
+                             (setf requested-value e))))))
+    (%register-tunnel-request-listener listener-fun)
+    (send-read-request (address:make-group-address group-address))
+    (prog1
+        (timeutils:wait-cond (lambda () (not (null requested-value)))
+                             0.1 10)
+      (%remove-tunnel-request-listener listener-fun))))
 
 (defmacro with-knx/ip ((host &key (port 3671)) &body body)
   "Macro that initialized and destroys a KNX/IP connection.
