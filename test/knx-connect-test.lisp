@@ -15,6 +15,18 @@
 (log:config :debug)
 (log:config '(sento) :warn)
 
+(defun make-test-connect-response ()
+  (connect::%make-connect-response
+   :header (make-header connect::+knx-connect-response+ 6)
+   :channel-id 1
+   :status 0
+   :hpai hpai::*hpai-unbound-addr*
+   :crd (crd::%make-crd
+         :conn-type
+         #x04
+         :individual-address
+         (address:make-individual-address "1.2.3"))))
+
 ;; --------------------------------------
 ;; initialize
 ;; --------------------------------------
@@ -34,17 +46,7 @@
          (setf knx-client::*channel-id* nil))))
     (answer ip-client:ip-receive-knx-data
       (when (eql knx-client::*channel-id* 1)
-        `(,(connect::%make-connect-response
-            :header (make-header connect::+knx-connect-response+ 6)
-            :channel-id 1
-            :status 0
-            :hpai hpai::*hpai-unbound-addr*
-            :crd (crd::%make-crd
-                  :conn-type
-                  #x04
-                  :individual-address
-                  (address:make-individual-address "1.2.3")))
-          nil)))
+        `(,(make-test-connect-response) nil)))
     (answer ip-client:ip-disconnect
       (setf ip-client::*conn* nil))
     (unwind-protect
@@ -137,16 +139,7 @@
       (answer ip-client:ip-receive-knx-data
         (when (and connect-request-sent (not connect-response-received))
           (setf connect-response-received t)
-          (let ((resp (connect::%make-connect-response
-                       :header (make-header connect::+knx-connect-response+ 6)
-                       :channel-id 1
-                       :status 0
-                       :hpai hpai::*hpai-unbound-addr*
-                       :crd (crd::%make-crd
-                             :conn-type
-                             #x04
-                             :individual-address
-                             (address:make-individual-address "1.2.3")))))
+          (let ((resp (make-test-connect-response)))
             (format t "Returning connect response ~a~%" resp)
             `(,resp nil))))
       (answer ip-client:ip-disconnect
@@ -221,16 +214,7 @@
       (answer ip-client:ip-receive-knx-data
         (when (and connect-request-sent (not connect-response-received))
           (setf connect-response-received t)
-          (let ((resp (connect::%make-connect-response
-                       :header (make-header connect::+knx-connect-response+ 6)
-                       :channel-id 1
-                       :status 99
-                       :hpai hpai::*hpai-unbound-addr*
-                       :crd (crd::%make-crd
-                             :conn-type
-                             #x04
-                             :individual-address
-                             (address:make-individual-address "1.2.3")))))
+          (let ((resp (make-test-connect-response)))
             (format t "Returning connect response ~a~%" resp)
             `(,resp nil))))
       (answer ip-client:ip-disconnect
@@ -258,7 +242,17 @@
       (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
       (is (= (length (invocations 'ip-client:ip-disconnect)) 1)))))
 
-(test request-value--wait-for-value
+(defun make-test-tunnelling-request ()
+  (tunnelling:make-tunnelling-request
+   :channel-id 1
+   :seq-counter 1
+   :cemi (cemi:make-default-cemi
+          :message-code +cemi-mc-l_data.req+
+          :dest-address (address:make-group-address "1/2/3")
+          :apci (make-apci-gv-write)
+          :dpt (dpt:make-dpt1 :switch :on))))
+
+(def-fixture request-value (receive-tunn-req-delay)
   (with-mocks ()
     (let ((response-to-receive))
       (answer ip-client:ip-connect
@@ -268,30 +262,16 @@
           (connect:knx-connect-request
            (setf knx-client::*channel-id* 1)
            (setf response-to-receive
-                 (connect::%make-connect-response
-                  :header (make-header connect::+knx-connect-response+ 6)
-                  :channel-id 1
-                  :status 0
-                  :hpai hpai::*hpai-unbound-addr*
-                  :crd (crd::%make-crd
-                        :conn-type
-                        #x04
-                        :individual-address
-                        (address:make-individual-address "1.2.3")))))
+                 (make-test-connect-response)))
           (tunnelling:knx-tunnelling-request
            (setf response-to-receive
-                 (tunnelling:make-tunnelling-request
-                  :channel-id 1
-                  :seq-counter 1
-                  :cemi (cemi:make-default-cemi
-                         :message-code +cemi-mc-l_data.req+
-                         :dest-address (address:make-group-address "1/2/3")
-                         :apci (make-apci-gv-write)
-                         :dpt (dpt:make-dpt1 :switch :on)))))
+                 (make-test-tunnelling-request)))
           (connect:knx-disconnect-request
            (setf knx-client::*channel-id* nil))))
       (answer ip-client:ip-receive-knx-data
         (when response-to-receive
+          (when (typep response-to-receive 'tunnelling:knx-tunnelling-request)
+            (sleep receive-tunn-req-delay))
           (prog1
               `(,response-to-receive nil)
             (setf response-to-receive nil))))
@@ -299,9 +279,23 @@
         (setf ip-client::*conn* nil))    
     
       (setf knx-client::*receive-knx-data-recur-delay-secs* 1.0)
-      (with-knx/ip ("12.23.34.45")
-        (let ((value (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
-                             :timeout 10.0)))
-          (format t "value: ~a~%" value)
-          (is (eq value :on))
-          )))))
+      (&body))))
+
+(test request-value--wait-for-value
+  (with-fixture request-value (0)
+    (with-knx/ip ("12.23.34.45")
+      (let ((value (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
+                           :timeout 10.0)))
+        (format t "value: ~a~%" value)
+        (is (eq value :on))
+        ))))
+
+(test request-value--wait-for-value--timeout
+  (with-fixture request-value (1.5)
+    (with-knx/ip ("12.23.34.45")
+      (multiple-value-bind (res fut)
+          (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
+                  :timeout 1.0)
+        (format t "value: ~a~%" (list res fut))
+        (is (null res))
+        ))))

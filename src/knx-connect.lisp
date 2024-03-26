@@ -112,7 +112,9 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
                          (dpt:make-dpt1 dpt-type (if value :on :off))))))
 
 (defun request-value (group-address dpt-type)
-  "Request the value of the given `group-address` with the given `dpt-type`."
+  "Request the value of the given `group-address` with the given `dpt-type`.
+Returns `sento.future:future` that will be resolved with the value when it is received.
+In case of error, the future will be resolved with the error condition."
   (log:info "Requesting value for ga: ~a" group-address)
   (let* ((requested-ga (make-group-address group-address))
          (listener-fun))
@@ -121,12 +123,13 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
           (setf listener-fun
                 (lambda (req)
                   (tasks:with-context (*asys* :read-request)
-                    (tasks:task-start
+                    (tasks:task-async
                      (lambda ()
                        (let* ((cemi (tunnelling-request-cemi req))
                               (ga (cemi-destination-addr cemi)))
                          (log:debug "Received request for ga: ~a" ga)
                          (when (equalp ga requested-ga)
+                           (%remove-tunnel-request-listener listener-fun)
                            (handler-case
                                (progn
                                  (log:debug "Matches requested ga: ~a" group-address)
@@ -147,8 +150,7 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
            (send-read-request (make-group-address group-address)))
         (result)
       (declare (ignore result))
-      (log:debug "request-value completed")
-      (%remove-tunnel-request-listener listener-fun))))
+      (log:debug "request-value completed"))))
 
 (defmacro with-knx/ip ((host &key (port 3671)) &body body)
   "Macro that initialized and destroys a KNX/IP connection.
