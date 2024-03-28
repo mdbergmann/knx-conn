@@ -252,6 +252,7 @@
           :apci (make-apci-gv-write)
           :dpt (dpt:make-dpt1 :switch :on))))
 
+(defvar *test-tunnelling-request* nil)
 (def-fixture request-value (receive-tunn-req-delay)
   (with-mocks ()
     (let ((response-to-receive))
@@ -265,7 +266,7 @@
                  (make-test-connect-response)))
           (tunnelling:knx-tunnelling-request
            (setf response-to-receive
-                 (make-test-tunnelling-request)))
+                 *test-tunnelling-request*))
           (connect:knx-disconnect-request
            (setf knx-client::*channel-id* nil))))
       (answer ip-client:ip-receive-knx-data
@@ -282,20 +283,48 @@
       (&body))))
 
 (test request-value--wait-for-value
-  (with-fixture request-value (0)
-    (with-knx/ip ("12.23.34.45")
-      (let ((value (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
-                           :timeout 10.0)))
-        (format t "value: ~a~%" value)
-        (is (eq value :on))
-        ))))
+  (let ((*test-tunnelling-request* (make-test-tunnelling-request)))
+    (with-fixture request-value (0)
+      (with-knx/ip ("12.23.34.45")
+        (let ((value (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
+                             :timeout 10.0)))
+          (format t "value: ~a~%" value)
+          (is (eq value :on))
+          )))))
 
 (test request-value--wait-for-value--timeout
-  (with-fixture request-value (1.5)
-    (with-knx/ip ("12.23.34.45")
-      (multiple-value-bind (res fut)
-          (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
-                  :timeout 1.0)
-        (format t "value: ~a~%" (list res fut))
-        (is (null res))
-        ))))
+  (let ((*test-tunnelling-request* (make-test-tunnelling-request)))
+    (with-fixture request-value (1.5)
+      (with-knx/ip ("12.23.34.45")
+        (multiple-value-bind (res fut)
+            (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
+                    :timeout 1.0)
+          (format t "value: ~a~%" (list res fut))
+          (is (null res))
+          )))))
+
+(defun make-test-tunnelling-request-from-bytes ()
+  (knx-conn.knx-obj:parse-root-knx-object
+   (to-byte-seq
+    (tunnelling:make-tunnelling-request
+     :channel-id 1
+     :seq-counter 1
+     :cemi (cemi:make-default-cemi
+            :message-code +cemi-mc-l_data.req+
+            :dest-address (address:make-group-address "1/2/3")
+            :apci (make-apci-gv-write)
+            :dpt (dpt:make-dpt9 :temperature 23.5))))))
+
+(test request-value--wait-for-value--unable-to-parse-dpt-type
+  ;; dpt-type 9.001
+  (let ((*test-tunnelling-request* (make-test-tunnelling-request-from-bytes)))
+    (with-fixture request-value (1.5)
+      (with-knx/ip ("12.23.34.45")
+        (multiple-value-bind (res fut)
+            (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
+                    :timeout 10.0)
+          (format t "value: ~a~%" (list res fut))
+          (is (typep res 'knx-unable-to-parse))
+          (is (equal (format nil "~a" res)
+                     "Unable to parse as DPT type: DPT-9.001"))
+          )))))

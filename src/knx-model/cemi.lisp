@@ -205,7 +205,9 @@ cEMI frame
      1 ; ctrl2
      (* 2 (address:address-len))
      1 ; npdu-len
-     (cemi-npdu-len cemi)))
+     (cemi-npdu-len cemi)
+     1 ; ??? one is missing somewhere
+     ))
 
 ;; --------------------------
 ;; control octet 1

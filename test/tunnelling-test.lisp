@@ -25,6 +25,15 @@
       (is (typep cemi 'cemi-l-data))
       (is (= (cemi-message-code cemi) +cemi-mc-l_data.ind+)))))
 
+(test parse-then-to-bytes
+  (let* ((request (knxobj:parse-root-knx-object
+                   *raw-tunnelling-request-data*))
+         (bytes-seq (knxobj:to-byte-seq request)))
+    (is (= (length *raw-tunnelling-request-data*)
+           (length bytes-seq)))
+    (is (equalp *raw-tunnelling-request-data* bytes-seq))
+    (let ((from-bytes (knxobj:parse-root-knx-object bytes-seq)))
+      (is (equalp request from-bytes)))))
 
 (test make-tunnelling-request--default
   (let ((req (make-tunnelling-request
@@ -36,5 +45,21 @@
                      :apci (make-apci-gv-write)
                      :dpt (dpt:make-dpt1 :switch :off)))))
     (is (not (null req)))))
+
+(test from-to-byte-seq
+  (let* ((req (make-tunnelling-request
+               :channel-id 0
+               :seq-counter 0
+               :cemi (make-default-cemi
+                      :message-code +cemi-mc-l_data.ind+
+                      :dest-address (address:make-group-address "1/2/3")
+                      :apci (make-apci-gv-write)
+                      :dpt (dpt:make-dpt1 :switch :off))))
+         (byte-seq (knxobj:to-byte-seq req)))
+    (let ((req-from-bytes (knxobj:parse-root-knx-object byte-seq)))
+      ;; replace data with to-bytes dpt to have it comparable
+      (setf (cemi-data (tunnelling-request-cemi req))
+            (knxutil:seq-to-array #(0) :arr-type 'vector))
+      (is (equalp req req-from-bytes)))))
 
 ;; TODO: Add more tests

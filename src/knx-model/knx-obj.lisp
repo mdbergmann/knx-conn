@@ -91,7 +91,7 @@ The byte-sequence should be a flat vector of octets."))
 
 (defun make-header (type body-len)
   (%make-header :type type
-                :body-len (+ +knx-header-len+ body-len)))
+                :body-len body-len))
 
 (defun %parse-header (pkg-data)
   (let ((header-size (aref pkg-data 0))
@@ -99,7 +99,7 @@ The byte-sequence should be a flat vector of octets."))
         (type (to-int (aref pkg-data 2)
                        (aref pkg-data 3)))
         (body-size (to-int (aref pkg-data 4)
-                            (aref pkg-data 5))))
+                           (aref pkg-data 5))))
     (let ((eff-body-size (- body-size +knx-header-len+)))
       (%make-header
        :len header-size
@@ -112,7 +112,8 @@ The byte-sequence should be a flat vector of octets."))
                (vector (header-len obj)
                        (header-knxnetip-version obj))
                (int-to-byte-vec (header-type obj))
-               (int-to-byte-vec (header-body-len obj))))
+               (int-to-byte-vec (+ (header-body-len obj)
+                                   +knx-header-len+))))
 
 ;; -----------------------------
 ;; knx generic package
