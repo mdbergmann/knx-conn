@@ -36,7 +36,7 @@
 ;; conditions
 ;; -----------------------------
 
-(define-condition knx-error-condition (simple-condition) ()
+(define-condition knx-error-condition (simple-error) ()
   (:report (lambda (condition stream)
              (format stream "Error condition: ~a, args: ~a"
                      (simple-condition-format-control condition)
@@ -139,6 +139,9 @@ Returns the parsed object."
          (type (header-type header)))
     (handler-case
         (parse-to-obj type header body)
+      (knx-error-condition (e)
+        (log:warn "Error on parsing: ~a" e)
+        (error e))
       (error (e)
         (log:warn "Unable to parse the package: ~a" e)
         (error 'knx-unable-to-parse

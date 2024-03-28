@@ -98,6 +98,10 @@ Range:      b = {0 = off, 1 = on}"
   (vector (dpt1-raw-value dpt)))
 
 (defmethod parse-to-dpt ((value-type (eql 'dpt-1.001)) byte-vec)
+  (unless (= (length byte-vec) 1)
+    (error 'knx-unable-to-parse
+           :format-control "Byte vector must be of length 1"
+           :format-arguments (list value-type)))
   (let ((value (if (zerop (aref byte-vec 0))
                    :off
                    :on)))
@@ -144,7 +148,10 @@ Encoding:   Float Value = (0.01 * M)*2(E)
   (dpt9-raw-value dpt))
 
 (defmethod parse-to-dpt ((value-type (eql 'dpt-9.001)) byte-vec)
-  (assert (= (length byte-vec) 2) (byte-vec) "Byte vector must be of length 2")
+  (unless (= (length byte-vec) 1)
+    (error 'knx-unable-to-parse
+           :format-control "Byte vector must be of length 2"
+           :format-arguments (list value-type)))
   (log:debug "Byte vector for DPT9.001: ~a" byte-vec)
   (labels ((two-completement-or-value (value)
              (if (zerop value)
