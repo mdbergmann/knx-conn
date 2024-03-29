@@ -85,13 +85,13 @@ OK - do tunnel close in knx-conn-destroy
 OK - read-request -> await-value use-case
 OK - rework *rceived-things* to be a hash-table with key (req type) and value (the received response) that fits to the request. The entry is cleaned up after the response is received.
 OK - use atomic for *tunnel-request-listener* (handled through actor)
-- cleanup routine for *awaited-things* that cleans up orphaned things
+OK - default cemi tests
+OK - more error handling tests
+? - cleanup routine for *awaited-things* that cleans up orphaned things
 - connstate (heartbeat): check for 3 failed requests
 - extract receive-handlers to separate functions.
 - allow hooks to be registered for value updates on certain group-addresses
 - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (Datum)
-- default cemi tests
-- more error handling tests
 - dpt1, more on/off options like (t / nil)
 - make nice DSL for the supported dpt types
 

@@ -58,12 +58,9 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
   (when start-receive
     (log:info "Starting async-receive...")
     (start-async-receive))
-  (fawait (establish-tunnel-connection) :timeout 10)
+  (fawait (establish-tunnel-connection enable-heartbeat) :timeout 10)
   (unless (tunnel-connection-established-p)
-    (error "Could not establish tunnel connection!"))
-  (when enable-heartbeat
-    (log:info "Starting heartbeat...")
-    (start-heartbeat)))
+    (error "Could not establish tunnel connection!")))
 
 (defun knx-conn-destroy ()
   "Close the KNX connection and destroy the internal structures."

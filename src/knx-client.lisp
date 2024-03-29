@@ -27,7 +27,6 @@
            #:async-handler-receive
            #:start-async-receive
            #:make-async-handler
-           #:start-heartbeat
            ;; conditions
            #:knx-receive-error
            #:knx-response-timeout-error
@@ -87,6 +86,9 @@ Only applicable if `start-receive` is true in `knx-conn-init`.")
 (defvar *awaited-things* (make-hash-table :test #'eq)
   "Pool of received messages that are not handled otherwise.")
 
+(defvar *heartbeat-timer-sig* nil
+  "The signature of the heartbeat timer.")
+
 ;; ----------- helper functions ------------
 
 (defun %assert-channel-id ()
@@ -104,6 +106,26 @@ Only applicable if `start-receive` is true in `knx-conn-init`.")
 
 (defun clr-tunnelling-request-listeners ()
   (! *async-handler* '(:clr-tunnel-req-listeners)))
+
+(defun %start-heartbeat ()
+  (assert *async-handler* nil "No async-handler set!")
+  (let ((scheduler (asys:scheduler
+                    (ac:system
+                     (act:context *async-handler*)))))
+    (setf *heartbeat-timer-sig*
+          (wt:schedule-recurring scheduler
+                                 *heartbeat-interval-secs*
+                                 *heartbeat-interval-secs*
+                                 (lambda ()
+                                   (! *async-handler* '(:heartbeat . nil)))))))
+
+(defun %stop-heartbeat ()
+  (assert *async-handler* nil "No async-handler set!")
+  (when *heartbeat-timer-sig*
+    (let ((scheduler (asys:scheduler
+                      (ac:system
+                       (act:context *async-handler*)))))
+      (wt:cancel scheduler *heartbeat-timer-sig*))))
 
 ;; ---------------------------------
 ;; knx-ip protocol functions
@@ -131,7 +153,7 @@ The error condition will be of type `knx-receive-error` and reflects just an err
                           ,(get-universal-time)
                           ,*resp-wait-timeout-secs*))))
 
-(defun establish-tunnel-connection ()
+(defun establish-tunnel-connection (&optional (enable-heartbeat t))
   "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
 Returns a future. The result will be a list of the received response and an error condition, if any.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol.
@@ -155,11 +177,15 @@ If the connection is established successfully, the channel-id will be stored in 
                (log:info "Tunnel connection established.")
                (log:info "Channel-id: ~a" (connect-response-channel-id response))
                (setf *channel-id*
-                     (connect-response-channel-id response)))))))
+                     (connect-response-channel-id response))
+               (when enable-heartbeat
+                 (log:info "Starting heartbeat...")
+                 (%start-heartbeat)))))))
     fut))
 
 (defun close-tunnel-connection ()
   (%assert-channel-id)
+  (%stop-heartbeat)
   (log:info "Closing tunnel connection...")
   (! *async-handler* `(:send . ,(make-disconnect-request *channel-id*)))
   (let ((fut
@@ -284,16 +310,17 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                             (error (c)
                               (log:warn "Error on receiving: ~a" c)))
                         (sleep *receive-knx-data-recur-delay-secs*)
-                        (! self `(:receive . nil))))
+                        (when (ip-connected-p)
+                          (! self `(:receive . nil)))))
                     (lambda (result)
                       (handler-case
                           (when (and result (car result))
-                            (log:debug "KNX response received: (~a ~a)"
+                            (log:debug "KNX message received: (~a ~a)"
                                        (type-of (first result))
                                        (second result))
                             (! self `(:received . ,result)))
                         (error (c)
-                          (log:warn "Error on receiving: ~a" c))))))
+                          (log:warn "Error on received: ~a" c))))))
 
           (:received
            (destructuring-bind (received err) args
@@ -361,17 +388,6 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
 (defun start-async-receive ()
   (assert *async-handler* nil "No async-handler set!")
   (! *async-handler* '(:receive . nil)))
-
-(defun start-heartbeat ()
-  (assert *async-handler* nil "No async-handler set!")
-  (let ((scheduler (asys:scheduler
-                    (ac:system
-                     (act:context *async-handler*)))))
-    (wt:schedule-recurring scheduler
-                           *heartbeat-interval-secs*
-                           *heartbeat-interval-secs*
-                           (lambda ()
-                             (! *async-handler* '(:heartbeat . nil))))))
 
 (defun make-async-handler (actor-context)
   (assert (null *async-handler*) nil "Async-handler already set!")
