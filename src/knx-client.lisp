@@ -81,7 +81,8 @@ Only applicable if `start-receive` is true in `knx-conn-init`.")
 (defvar *tunnel-request-listeners* nil
   "A list of functions to be called when a tunnelling request is received.")
 
-(defvar *received-things* nil "Pool of received messages that are not handled otherwise.")
+(defvar *awaited-things* (make-hash-table :test #'eq)
+  "Pool of received messages that are not handled otherwise.")
 
 ;; ----------- helper functions ------------
 
@@ -113,7 +114,7 @@ The error condition will be of type `knx-receive-error` and reflects just an err
   (log:info "Retrieving description information...")
   (! *async-handler* `(:send
                        . ,(make-descr-request *hpai-unbound-addr*)))
-  (? *async-handler* `(:wait-on-resp-type
+  (? *async-handler* `(:wait-on-resp
                        . (knx-descr-response
                           ,(get-universal-time)
                           ,*resp-wait-timeout-secs*))))
@@ -128,7 +129,7 @@ If the connection is established successfully, the channel-id will be stored in 
   (! *async-handler* `(:send . ,(make-connect-request)))
   (let ((fut
           (? *async-handler*
-             `(:wait-on-resp-type
+             `(:wait-on-resp
                . (knx-connect-response
                   ,(get-universal-time)
                   ,*resp-wait-timeout-secs*)))))
@@ -151,7 +152,7 @@ If the connection is established successfully, the channel-id will be stored in 
   (! *async-handler* `(:send . ,(make-disconnect-request *channel-id*)))
   (let ((fut
           (? *async-handler*
-             `(:wait-on-resp-type
+             `(:wait-on-resp
                . (knx-disconnect-response
                   ,(get-universal-time)
                   ,*resp-wait-timeout-secs*)))))
@@ -177,7 +178,7 @@ This request should be sent every some seconds (i.e. 60) as a heart-beat to keep
   (%assert-channel-id)
   (! *async-handler* `(:send
                        . ,(make-connstate-request *channel-id*)))
-  (? *async-handler* `(:wait-on-resp-type
+  (? *async-handler* `(:wait-on-resp
                        . (knx-connstate-response
                           ,(get-universal-time)
                           ,*resp-wait-timeout-secs*))))
@@ -231,9 +232,9 @@ Returns the request that was sent."
 - `(:receive . nil)` to start receive knx requests/responses from the gateway. The receival itself is done in a separate task (sento.tasks API). The result of the receival is forwarded to:
 
 - `(:received . <result>)` looks at what is the type of the received.
-For `knx-tunnelling-request`s the registered listener functions will be called. All else will be enqueued in the `*received-things*` list, for `:wait-on-resp-type` to check.
+For `knx-tunnelling-request`s the registered listener functions will be called. All else will be enqueued in the `*awaited-things*` list, for `:wait-on-resp` to check.
 
-- `(:wait-on-resp-type . (<resp-type> <start-time> <wait-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + <wait-time> (defaults to *resp-wait-timeout-secs*)` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request.
+- `(:wait-on-resp . (<resp-type> <start-time> <wait-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + <wait-time> (defaults to *resp-wait-timeout-secs*)` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request.
 
 - `(:heartbeat . nil)` to send a connection-state request to the KNXnet/IP gateway."
   (destructuring-bind (msg-sym . args) msg
@@ -253,7 +254,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                  (doasync :waiter
                           (lambda ()
                             (sleep 0.2)
-                            (! self `(:wait-on-resp-type
+                            (! self `(:wait-on-resp
                                       . (,resp-type ,start-time ,resp-wait-time))
                                sender)))))
         (case msg-sym
@@ -285,26 +286,31 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
           (:received
            (destructuring-bind (received err) args
              (declare (ignore err))
-             (log:debug "Received: ~a" (type-of received))
-             (typecase received
-               (knx-tunnelling-request
-                (progn
-                  (log:debug "Notifying listeners of received tunnelling request...")
-                  (dolist (listener-fun *tunnel-request-listeners*)
-                    (ignore-errors
-                     (funcall listener-fun received)))))
-               (knx-disconnect-request
-                (progn
-                  (log:info "Received ip-disconnect request.")
-                  (setf *channel-id* nil)
-                  (setf *seq-counter* 0)))
-               (t
-                (progn
-                  (log:debug "Enqueuing: ~a" received)
-                  (push args *received-things*))))))
+             (let ((received-type (type-of received)))
+               (log:debug "Received: ~a" received-type)
+               (typecase received
+                 (knx-tunnelling-request
+                  (progn
+                    (log:debug "Notifying listeners of received tunnelling request...")
+                    (dolist (listener-fun *tunnel-request-listeners*)
+                      (ignore-errors
+                       (funcall listener-fun received)))))
+                 (knx-disconnect-request
+                  (progn
+                    (log:info "Received ip-disconnect request.")
+                    (setf *channel-id* nil)
+                    (setf *seq-counter* 0)))
+                 (t
+                  (if (null (gethash received-type *awaited-things*))
+                      (log:debug "Discarding received: ~a" received-type)
+                      (progn
+                        (log:debug "Filling awaited response: ~a" received-type)
+                        (setf (gethash received-type *awaited-things*) args))))))))
           
-          (:wait-on-resp-type
+          (:wait-on-resp
            (destructuring-bind (resp-type start-time resp-wait-time) args
+             (if (null (gethash resp-type *awaited-things*))
+                 (setf (gethash resp-type *awaited-things*) 'awaiting))
              (when (timeout-elapsed-p start-time resp-wait-time)
                (log:info "Time elapsed waiting for response of type: ~a" resp-type)
                (reply `(nil ,(make-condition
@@ -313,19 +319,18 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                               (format nil
                                       "Timeout waiting for response of type ~a"
                                       resp-type))))
+               (remhash resp-type *awaited-things*)
                (return-from async-handler-receive))
              (log:trace "Checking for response of type: ~a" resp-type)
-             (loop
-               (let ((thing (pop *received-things*)))
-                 (unless thing
-                   (log:trace "No thing received yet")
-                   (wait-and-call-again resp-type start-time resp-wait-time)
-                   (return))
-                 (destructuring-bind (response err) thing
-                   (log:debug "Popped thing: (resp:~a err:~a)" (type-of response) err)
-                   (if (typep response resp-type)
-                       (reply thing)
-                       (wait-and-call-again resp-type start-time resp-wait-time)))))))
+             (let ((thing (gethash resp-type *awaited-things*)))
+               (if (not (eq thing 'awaiting))
+                   (destructuring-bind (response err) thing
+                     (log:debug "Received thing: (resp:~a err:~a)" (type-of response) err)
+                     (reply thing)
+                     (remhash resp-type *awaited-things*))
+                   (progn
+                     (log:trace "Thing not received yet")
+                     (wait-and-call-again resp-type start-time resp-wait-time))))))
 
           (:heartbeat
            ;; extended wait timeout according to spec

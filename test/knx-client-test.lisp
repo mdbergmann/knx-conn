@@ -107,7 +107,6 @@
     (answer usocket:socket-receive (progn
                                      (sleep 2.0)
                                      nil))
-
     (setf *resp-wait-timeout-secs* 1)
     (let ((result-fut (retrieve-descr-info)))
       (sleep 2.0)
