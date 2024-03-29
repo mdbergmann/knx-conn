@@ -209,6 +209,7 @@
           :dpt (dpt:make-dpt1 :switch :on))))
 
 (defvar *test-tunnelling-request* nil)
+
 (test request-value--wait-for-value
   (setf *test-tunnelling-request* (make-test-tunnelling-request))
   (with-fixture request-value (0 t)

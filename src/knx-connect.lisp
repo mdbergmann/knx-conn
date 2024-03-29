@@ -111,43 +111,48 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
                         ((eq dpt-type 'dpt:dpt-1.001)
                          (dpt:make-dpt1 dpt-type (if value :on :off))))))
 
+(defmacro %make-listener-fun (requested-ga dpt-type)
+  `(lambda (req)
+     (tasks:with-context (*asys* :read-request)
+       (tasks:task-async
+        (lambda ()
+          (let* ((cemi (tunnelling-request-cemi req))
+                 (ga (cemi-destination-addr cemi)))
+            (log:debug "Received request for ga: ~a" ga)
+            (when (equalp ga ,requested-ga)
+              (%remove-tunnel-request-listener listener-fun)
+              (handler-case
+                  (progn
+                    (log:debug "Matches requested ga: ~a" ga)
+                    (let* ((cemi-data (cemi-data cemi))
+                           (dpt (etypecase cemi-data
+                                  (dpt
+                                   cemi-data)
+                                  ((vector octet)
+                                   (parse-to-dpt ,dpt-type
+                                                 cemi-data))))
+                           (value (dpt-value dpt)))
+                      (log:debug "Received requested value: ~a for ga: ~a"
+                                 dpt group-address)
+                      (fresolve value)))
+                (error (e)
+                  (log:error "Error in listener-fun: ~a" e)
+                  (fresolve e))))))))))
+
 (defun request-value (group-address dpt-type)
   "Request the value of the given `group-address` with the given `dpt-type`.
+
 Returns `sento.future:future` that will be resolved with the value when it is received.
-In case of error, the future will be resolved with the error condition."
+In case of error, the future will be resolved with the error condition or `NIL' if the future times out."
   (log:info "Requesting value for ga: ~a" group-address)
   (let* ((requested-ga (make-group-address group-address))
          (listener-fun))
     (fcompleted
         (with-fut-resolve
           (setf listener-fun
-                (lambda (req)
-                  (tasks:with-context (*asys* :read-request)
-                    (tasks:task-async
-                     (lambda ()
-                       (let* ((cemi (tunnelling-request-cemi req))
-                              (ga (cemi-destination-addr cemi)))
-                         (log:debug "Received request for ga: ~a" ga)
-                         (when (equalp ga requested-ga)
-                           (%remove-tunnel-request-listener listener-fun)
-                           (handler-case
-                               (progn
-                                 (log:debug "Matches requested ga: ~a" group-address)
-                                 (let* ((dpt (etypecase (cemi-data cemi)
-                                               (dpt
-                                                (cemi-data cemi))
-                                               ((vector octet)
-                                                (parse-to-dpt dpt-type
-                                                              (cemi-data cemi)))))
-                                        (value (dpt-value dpt)))
-                                   (log:debug "Received requested value: ~a for ga: ~a"
-                                              dpt group-address)
-                                   (fresolve value)))
-                             (error (e)
-                               (log:error "Error in listener-fun: ~a" e)
-                               (fresolve e))))))))))
-           (%register-tunnel-request-listener listener-fun)
-           (send-read-request (make-group-address group-address)))
+                (%make-listener-fun requested-ga dpt-type))
+          (%register-tunnel-request-listener listener-fun)
+          (send-read-request (make-group-address group-address)))
         (result)
       (declare (ignore result))
       (log:debug "request-value completed"))))
