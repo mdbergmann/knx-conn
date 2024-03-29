@@ -42,14 +42,14 @@
              (when enable-heartbeat
                (start-heartbeat))
              (when listener-fun
-               (push listener-fun *tunnel-request-listeners*))
+               (add-tunnelling-request-listener listener-fun))
              (&body))
         (progn
+          (clr-tunnelling-request-listeners)
           (ac:shutdown test-asys :wait t)
           (setf *async-handler* nil)
           (setf *resp-wait-timeout-secs* resp-wait-timeout-store)
           (setf *receive-knx-data-recur-delay-secs* 0)
-          (setf *tunnel-request-listeners* nil)
           (setf knx-client::*channel-id* channel-id)
           (setf knx-client::*seq-counter* 0)
           (setf ip-client::*conn* nil))))))

@@ -35,20 +35,6 @@
     (ac:shutdown *asys* :wait t)
     (setf *asys* nil)))
 
-(defun %register-tunnel-request-listener (listener-fun)
-  "Register the given `listener-fun` to be called when a tunnelling request is received.
-The function is called with the `knx-tunnelling-request` as argument.
-Make sure that the function is not doing lon-running operations or else spawn a new task/thread so that it will not block/delay the receival of further requests."
-  (check-type listener-fun function)
-  (log:info "Registering listener: ~a" listener-fun)
-  (push listener-fun *tunnel-request-listeners*))
-
-(defun %remove-tunnel-request-listener (listener-fun)
-  "Remove the given `listener-fun` from the list of tunnelling request listeners."
-  (log:info "Removing listener: ~a" listener-fun)
-  (setf *tunnel-request-listeners*
-        (remove listener-fun *tunnel-request-listeners*)))
-
 ;; ---------------------------------
 ;; top-level functions
 ;; ---------------------------------
@@ -68,7 +54,7 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
     (make-async-handler *asys*))
   (when tunnel-request-listeners
     (dolist (listener-fun tunnel-request-listeners)
-      (%register-tunnel-request-listener listener-fun)))
+      (add-tunnelling-request-listener listener-fun)))
   (when start-receive
     (log:info "Starting async-receive...")
     (start-async-receive))
@@ -82,6 +68,9 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
 (defun knx-conn-destroy ()
   "Close the KNX connection and destroy the internal structures."
   (log:info "Destroying KNX...")
+  ;; clear stuff
+  (when *async-handler*
+    (clr-tunnelling-request-listeners))
   ;; close stuff
   (ignore-errors
    (close-tunnel-connection))
@@ -89,11 +78,9 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
    (ip-disconnect))
   (ignore-errors
    (%shutdown-asys))
-  ;; reset stuff
   (when *async-handler*
     (setf *async-handler* nil))
-  (when *tunnel-request-listeners*
-    (setf *tunnel-request-listeners* nil))
+  ;; reset stuff
   (setf knx-client:*receive-knx-data-recur-delay-secs*
         knx-client:*default-receive-knx-data-recur-delay-secs*)
   (setf knx-client::*heartbeat-interval-secs*
@@ -120,7 +107,7 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
                  (ga (cemi-destination-addr cemi)))
             (log:debug "Received request for ga: ~a" ga)
             (when (equalp ga ,requested-ga)
-              (%remove-tunnel-request-listener listener-fun)
+              (rem-tunnelling-request-listener listener-fun)
               (handler-case
                   (progn
                     (log:debug "Matches requested ga: ~a" ga)
@@ -151,7 +138,7 @@ In case of error, the future will be resolved with the error condition or `NIL' 
         (with-fut-resolve
           (setf listener-fun
                 (%make-listener-fun requested-ga dpt-type))
-          (%register-tunnel-request-listener listener-fun)
+          (add-tunnelling-request-listener listener-fun)
           (send-read-request (make-group-address group-address)))
         (result)
       (declare (ignore result))

@@ -84,7 +84,7 @@ OK - do tunnel connection in knx-conn-init
 OK - do tunnel close in knx-conn-destroy
 OK - read-request -> await-value use-case
 OK - rework *rceived-things* to be a hash-table with key (req type) and value (the received response) that fits to the request. The entry is cleaned up after the response is received.
-=> - use atomic for *tunnel-request-listener*
+OK - use atomic for *tunnel-request-listener* (handled through actor)
 - cleanup routine for *awaited-things* that cleans up orphaned things
 - connstate (heartbeat): check for 3 failed requests
 - extract receive-handlers to separate functions.

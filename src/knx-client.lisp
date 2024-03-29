@@ -14,8 +14,11 @@
            #:send-connection-state
            #:send-write-request
            #:send-read-request
+           ;; listeners
+           #:add-tunnelling-request-listener
+           #:rem-tunnelling-request-listener
+           #:clr-tunnelling-request-listeners
            ;; shared vars
-           #:*tunnel-request-listeners*
            #:*receive-knx-data-recur-delay-secs*
            #:*default-receive-knx-data-recur-delay-secs*
            #:*resp-wait-timeout-secs*
@@ -92,6 +95,15 @@ Only applicable if `start-receive` is true in `knx-conn-init`.")
 
 (defun %next-seq-counter ()
   (setf *seq-counter* (mod (1+ *seq-counter*) 255)))
+
+(defun add-tunnelling-request-listener (listener-fun)
+  (! *async-handler* `(:add-tunnel-req-listener . ,listener-fun)))
+
+(defun rem-tunnelling-request-listener (listener-fun)
+  (! *async-handler* `(:rem-tunnel-req-listener . ,listener-fun)))
+
+(defun clr-tunnelling-request-listeners ()
+  (! *async-handler* '(:clr-tunnel-req-listeners)))
 
 ;; ---------------------------------
 ;; knx-ip protocol functions
@@ -336,7 +348,15 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
            ;; extended wait timeout according to spec
            (let ((*resp-wait-timeout-secs*
                    *heartbeat-resp-wait-timeout-secs*))
-             (send-connection-state))))))))
+             (send-connection-state)))
+
+          (:add-tunnel-req-listener
+           (push args *tunnel-request-listeners*))
+          (:rem-tunnel-req-listener
+           (setf *tunnel-request-listeners*
+                 (remove args *tunnel-request-listeners*)))
+          (:clr-tunnel-req-listeners
+           (setf *tunnel-request-listeners* nil)))))))
 
 (defun start-async-receive ()
   (assert *async-handler* nil "No async-handler set!")

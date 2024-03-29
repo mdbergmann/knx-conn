@@ -89,7 +89,7 @@
     (is (eql knxc::*asys* nil))
     (is (eql knx-client::*channel-id* nil))
     (is (eql knx-client:*receive-knx-data-recur-delay-secs* 0))
-    (is (eql knx-client:*tunnel-request-listeners* nil))
+    (is (eql knx-client::*tunnel-request-listeners* nil))
     (is (eql knx-client:*async-handler* nil))))
 
 (test init--no-connect-when-already-connected
