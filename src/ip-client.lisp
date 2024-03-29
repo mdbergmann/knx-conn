@@ -53,7 +53,7 @@
 Returns a list of the received object and an error condition, if any."
   (assert *conn* nil "Not connected!")
   (log:debug "Receiving data...")
-  (let ((buf (make-array 1024 :element-type 'octet)))
+  (let ((buf (make-array 256 :element-type 'octet)))
     (handler-case 
         (let ((received-obj
                 (parse-root-knx-object
@@ -61,7 +61,7 @@ Returns a list of the received object and an error condition, if any."
           (log:debug "Received obj: ~a" received-obj)
           `(,received-obj nil))
       (error (e)
-        (log:info "Error: ~a" e)
+        (log:warn "Error: ~a, received bytes:~a" e buf)
         `(nil ,e))
       (condition (c)
         (log:info "Condition: ~a" c)
