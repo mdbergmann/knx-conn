@@ -153,8 +153,9 @@ In case of error, the future will be resolved with the error condition."
       (log:debug "request-value completed"))))
 
 (defmacro with-knx/ip ((host &key (port 3671)) &body body)
-  "Macro that initialized and destroys a KNX/IP connection.
-Use the `body' to perform operations on the KNX connection, i.e. `write-value'."
+  "Macro that initializes and destroys a KNX/IP connection.
+Use the `body' to perform operations on the KNX connection,
+i.e. `write-value' or `request-value'."
   `(unwind-protect
         (progn
           (knx-conn-init ,host :port ,port

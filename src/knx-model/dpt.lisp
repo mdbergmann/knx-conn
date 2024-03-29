@@ -148,7 +148,7 @@ Encoding:   Float Value = (0.01 * M)*2(E)
   (dpt9-raw-value dpt))
 
 (defmethod parse-to-dpt ((value-type (eql 'dpt-9.001)) byte-vec)
-  (unless (= (length byte-vec) 1)
+  (unless (= (length byte-vec) 2)
     (error 'knx-unable-to-parse
            :format-control "Byte vector must be of length 2"
            :format-arguments (list value-type)))

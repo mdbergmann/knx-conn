@@ -18,7 +18,7 @@
     (is (equalp (connect::disconnect-request-hpai req)
                 *hpai-unbound-addr*))
     (is (= (header-body-len
-            (connect::disconnect-request-header req)) 16))))
+            (connect::disconnect-request-header req)) 10))))
 
 (test disconnect-request--to-byte-seq
   (let* ((req (make-disconnect-request 0))
@@ -53,7 +53,7 @@
     (is (equalp (connect::connstate-request-hpai req)
                 *hpai-unbound-addr*))
     (is (= (header-body-len
-            (connect::connstate-request-header req)) 16))))
+            (connect::connstate-request-header req)) 10))))
 
 (test connstate-request--to-byte-seq
   (let* ((req (make-connstate-request 0))
