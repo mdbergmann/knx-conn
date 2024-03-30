@@ -16,11 +16,26 @@
 
 (test parse-tunnelling-request
   (let ((request (knxobj:parse-root-knx-object
-              *raw-tunnelling-request-data*)))
+                  *raw-tunnelling-request-data*)))
     (is (typep request 'knx-tunnelling-request))
     (let ((conn-header (tunnelling-request-conn-header request)))
       (is (= (conn-header-channel-id conn-header) 76))
       (is (= (conn-header-seq-counter conn-header) 0)))
+    (let ((cemi (tunnelling-request-cemi request)))
+      (is (typep cemi 'cemi-l-data))
+      (is (= (cemi-message-code cemi) +cemi-mc-l_data.ind+)))))
+
+(defparameter *raw-tunnelling-request-data-2*
+  #(6 16 4 32 0 21 4 74 16 0 41 0 188 208 19 14 0 4 1 0 129)
+  "Optimized data for a DPT-1.001")
+
+(test parse-tunnelling-request-2
+  (let ((request (knxobj:parse-root-knx-object
+                  *raw-tunnelling-request-data-2*)))
+    (is (typep request 'knx-tunnelling-request))
+    (let ((conn-header (tunnelling-request-conn-header request)))
+      (is (= (conn-header-channel-id conn-header) 74))
+      (is (= (conn-header-seq-counter conn-header) 16)))
     (let ((cemi (tunnelling-request-cemi request)))
       (is (typep cemi 'cemi-l-data))
       (is (= (cemi-message-code cemi) +cemi-mc-l_data.ind+)))))

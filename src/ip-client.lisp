@@ -23,7 +23,7 @@
                address port
                :protocol :datagram
                :element-type 'octet)))
-    (assert conn nil "Could not %ip-connect to ~a on port ~a" address port)
+    (assert conn nil "Could not ip-connect to ~a on port ~a" address port)
     (log:info "Connected to ~a on port ~a" address port)
     (setf *conn* conn)))
 
@@ -41,7 +41,7 @@
 (defun ip-send-knx-data (request)
   "Send the given `request` to the KNXnet/IP gateway."
   (assert *conn* nil "Not connected!")
-  (log:debug "Sending obj: ~a" request)
+  (log:debug "Sending obj: ~a" (type-of request))
   (let ((req-bytes (to-byte-seq request)))
     (check-type req-bytes (simple-array (unsigned-byte 8) (*)))
     (log:debug "Sending bytes: ~a" req-bytes)
@@ -52,16 +52,21 @@
   "Receive a KNXnet/IP request from the KNXnet/IP gateway.
 Returns a list of the received object and an error condition, if any."
   (assert *conn* nil "Not connected!")
-  (log:debug "Receiving data...")
+  (log:trace "Receiving data...")
   (let ((buf (make-array 256 :element-type 'octet)))
     (handler-case 
         (let ((received-obj
                 (parse-root-knx-object
                  (usocket:socket-receive *conn* buf 1024))))
-          (log:debug "Received obj: ~a" received-obj)
+          (log:debug "Received obj type: ~a" (type-of received-obj))
           `(,received-obj nil))
       (error (e)
-        (log:warn "Error: ~a, received bytes:~a" e buf)
+        (log:warn "Error: ~a" e)
+        (when (loop :for v :across buf
+                    :if (not (zerop v))
+                      :do (return t)
+                    :finally (return nil))
+          (log:debug "Received data: ~a" buf))
         `(nil ,e))
       (condition (c)
         (log:info "Condition: ~a" c)

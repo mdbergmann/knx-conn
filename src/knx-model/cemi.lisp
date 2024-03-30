@@ -50,11 +50,48 @@
 (in-package :knx-conn.cemi)
 
 (defconstant +cemi-mc-l_data.req+ #x11
-  "L_Data.req (data service request")
+  "To be used by software when transit a frame to KNX Net/IP device.
+Important: The status change is only a request and not an effective change!
+
+Example: Software requests to 'light on' to KNX Net/IP device and the KNX Net/IP device
+acknowledges the requests and forwards to a KNX device (e.g. a KNX push-button).
+
+Client --> | KNX Net/IP |      KNX device   (TUNNELING_REQ to KNX Net/IP)
+Client <-- | KNX Net/IP |      KNX device   (TUNNELING_ACK from KNX Net/IP)")
+
 (defconstant +cemi-mc-l_data.con+ #x2e
-  "L_Data.con (data service confirmation")
+  "To be used when confirm a frame from KNX Net/IP device. Usually happens after `+cemi-mc-l_data.req+`.
+
+Example:  
+1+2) Client wants to request (write or read) on a Group Address. The frame will be accepted by the
+KNX Net/IP device and sends an acknowledge frame to client. This doesn't mean that the change is effective!  
+3+4) The KNX Net/IP device will forward clients request to the KNX bus which is (probably) accepted by the KNX device. The KNX device sends an acknowledge frame to the KNX Net/IP device.  
+5+6) After apply the KNX device may (depending on flag setting) send a frame about the new status to the KNX Net/IP device. This will be acknowledged by KNX Net/IP device.
+7+8) The KNX Net/IP device will forward the frame to client. And client will send acknowledge frame and the status pool of client knows that the change has been applied!
+
+Client --> | KNX Net/IP |     KNX device  (TUNNELING_REQ to KNX Net/IP)
+Client <-- | KNX Net/IP |     KNX device  (TUNNELING_ACK from KNX Net/IP)
+Client     | KNX Net/IP | --> KNX device  (TUNNELING_REQ forwarded to KNX device)
+Client     | KNX Net/IP | <-- KNX device  (TUNNELING_ACK from device to KNX Net/IP)
+Client     | KNX Net/IP | <-- KNX device  (TUNNELING_CON to KNX Net/IP)
+Client     | KNX Net/IP | --> KNX device  (TUNNELING_ACK from KNX Net/IP to KNX device)
+Client <-- | KNX Net/IP |     KNX device  (TUNNELING_CON forwarded to client)
+Client --> | KNX Net/IP |     KNX device  (TUNNELING_ACK to KNX Net/IP)")
+
 (defconstant +cemi-mc-l_data.ind+ #x29
-  "L_Data.ind (data service indication")
+  "To be used when receive a frame from a remote user.
+Example:  
+1+2) A status has been changed KNX device (the initiator may be another device inside the KNX bus).
+The frame will be sent to KNX Net/IP device and will be acknowledged.  
+3+4) The frame will be forwarded by KNX Net/IP device to client about the new status. Finally, the client acknowledges the received frame.
+
+The behavior is very similar to the `+cemi-mc-l_data.con+`. This message code can be used to distinguish if the change was requested by client or if the request happened outside of the application.
+
+Client     | KNX Net/IP | <-- KNX device  (TUNNELING_IND from device to KNX Net/IP)
+Client     | KNX Net/IP | --> KNX device  (TUNNELING_ACK to KNX device)
+Client <-- | KNX Net/IP |     KNX device  (TUNNELING_IND forwarded to client)
+Client --> | KNX Net/IP |     KNX device  (TUNNELING_ACK to KNX Net/IP)")
+
 (defun cemi-l_data-p (message-code)
   "Return T if MESSAGE-CODE is a L_Data.*"
   (or (= message-code +cemi-mc-l_data.req+)
@@ -442,7 +479,9 @@ x... .... destination address type
                          nil)
                         ((= npdu-len 1)
                          ;; 6 bits, part of apci / optimized dpt
-                         (vector (logand (aref npdu 2) #x3f)))
+                         (seq-to-array
+                          (vector (logand (aref npdu 2) #x3f))
+                          :arr-type 'vector))
                         (t
                          ;; then bytes are beyond the apci
                          (let* ((start-index 3)
@@ -457,7 +496,7 @@ x... .... destination address type
           :ctrl1 (number-to-bit-vector ctrl1 8)
           :ctrl2 (number-to-bit-vector ctrl2 8)
           :source-addr (parse-individual-address source-addr)
-          :destination-addr (if (= 0 (aref destination-addr 0))
+          :destination-addr (if (= 0 (logand ctrl2 #x80))
                                 (parse-individual-address destination-addr)
                                 (parse-group-address destination-addr))
           :npdu-len npdu-len

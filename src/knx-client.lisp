@@ -225,9 +225,11 @@ This request should be sent every some seconds (i.e. 60) as a heart-beat to keep
 ;; tunnelling-request functions
 ;; ---------------------------------
 
-(defun send-write-request (group-address dpt)
+(defun send-write-request (group-address dpt &key (sync nil))
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
-Returns the request that was sent."
+Returns the request that was sent.
+
+`sync`: send the request synchronous. Functions returns when the request has been sent."
   (check-type group-address knx-group-address)
   (check-type dpt dpt)
   (%assert-channel-id)
@@ -239,7 +241,9 @@ Returns the request that was sent."
                      :dest-address group-address
                      :apci (make-apci-gv-write)
                      :dpt dpt))))
-    (! *async-handler* `(:send . ,req))
+    (if sync
+        (act:ask-s *async-handler* `(:send . ,req))
+        (! *async-handler* `(:send . ,req)))
     req))
 
 (defun send-read-request (group-address)
@@ -330,10 +334,20 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                (typecase received
                  (knx-tunnelling-request
                   (progn
-                    (log:debug "Notifying listeners of received tunnelling request...")
-                    (dolist (listener-fun *tunnel-request-listeners*)
-                      (ignore-errors
-                       (funcall listener-fun received)))))
+                    (log:info "Received tunnelling request with msg-code: ~a"
+                              (get-cemi-message-code received))
+                    (cond
+                      ((eql (get-cemi-message-code received)
+                            +cemi-mc-l_data.ind+)
+                       (progn
+                         (log:debug "Notifying listeners of received 'ind' tunnelling request")
+                         (log:debug "Req: ~a" received)
+                         (dolist (listener-fun *tunnel-request-listeners*)
+                           (ignore-errors
+                            (funcall listener-fun received)))))
+                      (t
+                       (log:debug
+                        "Received tunnelling request other message code than 'ind'.")))))
                  (knx-disconnect-request
                   (progn
                     (log:info "Received ip-disconnect request.")

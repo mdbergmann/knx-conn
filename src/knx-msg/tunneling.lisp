@@ -9,6 +9,7 @@
            #:make-tunnelling-ack
            #:conn-header-channel-id
            #:conn-header-seq-counter
+           #:get-cemi-message-code
            ))
 
 (in-package :knx-conn.tunnelling)
@@ -98,6 +99,10 @@ cEMI frame
                  :channel-id channel-id
                  :seq-counter seq-counter)
    :cemi cemi))
+
+(defun get-cemi-message-code (tunnel-req)
+  (check-type tunnel-req knx-tunnelling-request)
+  (cemi-message-code (tunnelling-request-cemi tunnel-req)))
 
 ;; -------------------------------
 ;; Tunnelling ack

@@ -88,11 +88,20 @@ OK - use atomic for *tunnel-request-listener* (handled through actor)
 OK - default cemi tests
 OK - more error handling tests
 ? - cleanup routine for *awaited-things* that cleans up orphaned things
+=> - register awaiting response before sending (!), or the response can be received before wait is called
+- test for heartbeat in knx-client-test
 - connstate (heartbeat): check for 3 failed requests
 - extract receive-handlers to separate functions.
 - allow hooks to be registered for value updates on certain group-addresses
 - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (Datum)
 - dpt1, more on/off options like (t / nil)
 - make nice DSL for the supported dpt types
+
+(write-value "0/0/4" 'dpt:dpt-1.001 nil :sync t)
+#(6 16 4 32 0 22 4 73 3 0 17 0 188 224 0 0 0 4 2 0 128 0)
+
+bytes len: 15
+bytes: 4 73 3 0 41 0 -68 -32 0 0 0 4 1 0 -128 
+bytes: TunnelingRequestBody{length=4, channelId=73, sequence=3, cemi=CEMI{messageCode=L_DATA_IND, additionalInfo=AdditionalInfo{bytes=}, controlByte1=ControlByte1{standardFrame=true, repeatEnabled=false, broadcastType=NORMAL, priority=LOW, requestAcknowledge=false, errorConfirmation=false}, controlByte2=ControlByte2{addressType=GROUP, hopCount=6, frameFormat=0}, sourceAddress=IndividualAddress{address=0.0.0}, destinationAddress=GroupAddress{address=4, address(2-level)=0/4, address(3-level)=0/0/4}, npduLength=1, tpci=UNNUMBERED_PACKAGE, packetNumber=0, apci=GROUP_VALUE_WRITE, data=0x00}}
 
 |#
