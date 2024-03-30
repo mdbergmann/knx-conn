@@ -43,7 +43,7 @@
   (assert *conn* nil "Not connected!")
   (log:debug "Sending obj: ~a" (type-of request))
   (let ((req-bytes (to-byte-seq request)))
-    (check-type req-bytes (simple-array (unsigned-byte 8) (*)))
+    (check-type req-bytes (simple-array octet (*)))
     (log:debug "Sending bytes: ~a" req-bytes)
     (usocket:socket-send *conn* req-bytes (length req-bytes)))
   request)

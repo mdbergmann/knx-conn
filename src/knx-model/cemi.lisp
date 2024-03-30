@@ -20,6 +20,8 @@
            #:+cemi-mc-l_data.req+
            #:+cemi-mc-l_data.con+
            #:+cemi-mc-l_data.ind+
+           #:cemi-mc-l_data-rep
+           #:cemi-l_data-p
            ;; ctrl1
            #:ctrl1-rep
            #:+broadcast-type-system+
@@ -97,6 +99,13 @@ Client --> | KNX Net/IP |     KNX device  (TUNNELING_ACK to KNX Net/IP)")
   (or (= message-code +cemi-mc-l_data.req+)
       (= message-code +cemi-mc-l_data.con+)
       (= message-code +cemi-mc-l_data.ind+)))
+
+(defun cemi-mc-l_data-rep (message-code)
+  "Return a human readable representation of MESSAGE-CODE"
+  (cond
+    ((= message-code +cemi-mc-l_data.req+) "L_Data.req")
+    ((= message-code +cemi-mc-l_data.con+) "L_Data.con")
+    ((= message-code +cemi-mc-l_data.ind+) "L_Data.ind")))
 
 ;; TCPI
 (defconstant +tcpi-udt+ #x00

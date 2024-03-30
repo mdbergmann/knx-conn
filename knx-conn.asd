@@ -89,7 +89,7 @@ OK - default cemi tests
 OK - more error handling tests
 OK - implement optimized dpt-1,2,3 data packaging
 ? - cleanup routine for *awaited-things* that cleans up orphaned things
-- implement proper protocol. Send Ack after receiving ind.
+OK - implement proper protocol. Send Ack after receiving ind.
 - check for .con (confirmation) after sending .req
 => - register awaiting response before sending (!), or the response can be received before wait is called
 - test for heartbeat in knx-client-test

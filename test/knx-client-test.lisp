@@ -1,6 +1,6 @@
 (defpackage :knx-conn.knx-client-test
   (:use :cl :fiveam :cl-mock :knx-client
-        :knxutil :knxobj :descr-info :connect :tunnelling
+        :knxutil :knxobj :cemi :descr-info :connect :tunnelling
    :sento.miscutils :sento.future
    :crd :cemi :address :dib :dpt)
   (:export #:run!
@@ -29,7 +29,7 @@
                        :receiver (:workers 1)
                        :waiter (:workers 1))))))
     ;; high value to not recur too much
-    (setf *receive-knx-data-recur-delay-secs* 1.0)
+    (setf *receive-knx-data-recur-delay-secs* .5)
     (with-mocks ()
       (answer usocket:socket-connect 'dummy)
       (answer usocket:socket-close t)      
@@ -330,6 +330,30 @@ In case of this the log must be checked."
         (is (not (null request)))
         (is (typep request 'knx-tunnelling-request)))
       (is (>= (length (invocations 'usocket:socket-receive)) 1)))))
+
+
+(test tunnelling-received-ind-request-should-send-ack
+  (let ((req (make-tunnelling-request
+              :channel-id 78
+              :seq-counter 0
+              :cemi (make-default-cemi
+                     :message-code +cemi-mc-l_data.ind+
+                     :dest-address (make-group-address "0/4/10")
+                     :apci (make-apci-gv-write)
+                     :dpt (make-dpt1 :switch :on)))))
+    (with-mocks ()
+      (answer ip-client:ip-receive-knx-data `(,req nil))
+      (answer (ip-client:ip-send-knx-data to-send)
+        (progn
+          (assert (typep to-send 'knx-tunnelling-ack) nil "Not a tunnelling ack!")
+          (assert (= 78 (tunnelling-ack-channel-id to-send)) nil "Wrong channel-id!")
+          (assert (= 0 (tunnelling-ack-seq-counter to-send)) nil "Wrong seq-counter!")))
+      (with-fixture env (nil t)
+        (is-true (await-cond 1.5
+                   (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))
+        (is-true (await-cond 1.5
+                   (>= (length (invocations 'ip-client:ip-send-knx-data)) 1)))
+        ))))
 
 ;; --------------------------------------
 ;; tunneling request sending

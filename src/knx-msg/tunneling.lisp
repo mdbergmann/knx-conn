@@ -9,7 +9,9 @@
            #:make-tunnelling-ack
            #:conn-header-channel-id
            #:conn-header-seq-counter
-           #:get-cemi-message-code
+           #:tunnelling-cemi-message-code
+           #:tunnelling-ack-channel-id
+           #:tunnelling-ack-seq-counter
            ))
 
 (in-package :knx-conn.tunnelling)
@@ -100,7 +102,7 @@ cEMI frame
                  :seq-counter seq-counter)
    :cemi cemi))
 
-(defun get-cemi-message-code (tunnel-req)
+(defun tunnelling-cemi-message-code (tunnel-req)
   (check-type tunnel-req knx-tunnelling-request)
   (cemi-message-code (tunnelling-request-cemi tunnel-req)))
 
@@ -136,9 +138,16 @@ Connection header
                (call-next-method obj)
                (to-byte-seq (tunnelling-ack-conn-header obj))))
 
+(defun tunnelling-ack-channel-id (tunnelling-ack)
+  (conn-header-channel-id (tunnelling-ack-conn-header tunnelling-ack)))
+
+(defun tunnelling-ack-seq-counter (tunnelling-ack)
+  (conn-header-seq-counter (tunnelling-ack-conn-header tunnelling-ack)))
+
 (defun make-tunnelling-ack (tunnelling-request)
   (let ((request-conn-header
-          (tunnelling-request-conn-header tunnelling-request)))
+          (copy-structure
+           (tunnelling-request-conn-header tunnelling-request))))
     (%make-tunnelling-ack
      :header (make-header +knx-tunnelling-ack+
                           +conn-header-structure-len+)

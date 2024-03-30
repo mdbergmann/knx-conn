@@ -333,21 +333,18 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
              (let ((received-type (type-of received)))
                (typecase received
                  (knx-tunnelling-request
-                  (progn
+                  (let ((msc (tunnelling-cemi-message-code received)))
                     (log:info "Received tunnelling request with msg-code: ~a"
-                              (get-cemi-message-code received))
-                    ;; (cond
-                    ;;   ((eql (get-cemi-message-code received)
-                    ;;         +cemi-mc-l_data.ind+)
+                              (cemi-mc-l_data-rep msc))
+                    (cond
+                      ((eql msc +cemi-mc-l_data.ind+)
+                       (! self `(:send . ,(make-tunnelling-ack received)))))
                     (progn
                       (log:debug "Notifying listeners of received 'ind' tunnelling request")
                       (log:debug "Req: ~a" received)
                       (dolist (listener-fun *tunnel-request-listeners*)
                         (ignore-errors
                          (funcall listener-fun received))))))
-                      ;; (t
-                      ;;  (log:debug
-                 ;;   "Received tunnelling request other message code than 'ind'.")))))
                  (knx-tunnelling-ack
                   (progn
                     (log:info "Received tunnelling ack: ~a" received)))
