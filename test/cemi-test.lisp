@@ -103,7 +103,7 @@
     (is-true cemi)
     (is (typep cemi 'cemi-l-data))))
 
-(test cemi-to-bytes--parse-from-bytes--dpt-1.001
+(test cemi-to-bytes--parse-from-bytes--dpt-1.001--optimized-data
   (let* ((cemi (make-default-cemi
                 :message-code +cemi-mc-l_data.req+
                 :dest-address (make-group-address "0/4/10")
@@ -117,7 +117,7 @@
             (parse-to-dpt 'dpt-1.001 (cemi-data parsed-cemi)))
       (is (equalp cemi parsed-cemi)))))
 
-(test cemi-to-bytes--parse-from-bytes--dpt-9.001
+(test cemi-to-bytes--parse-from-bytes--dpt-9.001--non-optimized-data
   (let* ((cemi (make-default-cemi
                 :message-code +cemi-mc-l_data.req+
                 :dest-address (make-group-address "0/4/10")

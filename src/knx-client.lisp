@@ -178,6 +178,7 @@ If the connection is established successfully, the channel-id will be stored in 
                (log:info "Channel-id: ~a" (connect-response-channel-id response))
                (setf *channel-id*
                      (connect-response-channel-id response))
+               (setf *seq-counter* 0)
                (when enable-heartbeat
                  (log:info "Starting heartbeat...")
                  (%start-heartbeat)))))))
@@ -330,24 +331,26 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
            (destructuring-bind (received err) args
              (declare (ignore err))
              (let ((received-type (type-of received)))
-               (log:debug "Received: ~a" received-type)
                (typecase received
                  (knx-tunnelling-request
                   (progn
                     (log:info "Received tunnelling request with msg-code: ~a"
                               (get-cemi-message-code received))
-                    (cond
-                      ((eql (get-cemi-message-code received)
-                            +cemi-mc-l_data.ind+)
-                       (progn
-                         (log:debug "Notifying listeners of received 'ind' tunnelling request")
-                         (log:debug "Req: ~a" received)
-                         (dolist (listener-fun *tunnel-request-listeners*)
-                           (ignore-errors
-                            (funcall listener-fun received)))))
-                      (t
-                       (log:debug
-                        "Received tunnelling request other message code than 'ind'.")))))
+                    ;; (cond
+                    ;;   ((eql (get-cemi-message-code received)
+                    ;;         +cemi-mc-l_data.ind+)
+                    (progn
+                      (log:debug "Notifying listeners of received 'ind' tunnelling request")
+                      (log:debug "Req: ~a" received)
+                      (dolist (listener-fun *tunnel-request-listeners*)
+                        (ignore-errors
+                         (funcall listener-fun received))))))
+                      ;; (t
+                      ;;  (log:debug
+                 ;;   "Received tunnelling request other message code than 'ind'.")))))
+                 (knx-tunnelling-ack
+                  (progn
+                    (log:info "Received tunnelling ack: ~a" received)))
                  (knx-disconnect-request
                   (progn
                     (log:info "Received ip-disconnect request.")

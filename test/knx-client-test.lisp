@@ -48,6 +48,8 @@
           (setf *async-handler* nil)
           (setf *resp-wait-timeout-secs* resp-wait-timeout-store)
           (setf *receive-knx-data-recur-delay-secs* 0)
+          (setf knx-client::*heartbeat-interval-secs*
+                knx-client::+default-heartbeat-interval-secs+)
           (setf knx-client::*channel-id* channel-id)
           (setf knx-client::*seq-counter* 0)
           (setf ip-client::*conn* nil))))))
@@ -95,7 +97,6 @@
     
     (is (= (length (invocations 'usocket:socket-send)) 1))
     (is (>= (length (invocations 'usocket:socket-receive)) 1))))
-
 
 (test wait-for-response--with-timeout--stop-when-elapsed
   "Test that when a response is expected but it doesn't come within the
@@ -179,10 +180,7 @@ In case of this the log must be checked."
 
 
 (defparameter *connect-response-data-err*
-  #(6 16 2 6 0 20 78 34 8 1 0 0 0 0 0 0 4 4 238 255 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
+  #(6 16 2 6 0 20 78 34 8 1 0 0 0 0 0 0 4 4 238 255 0 0 0 0 0 0 0)
   "Connect response with error status")
 
 (test connect--err
@@ -196,7 +194,7 @@ In case of this the log must be checked."
         (is (null err))
         (is (= (connect-response-status resp)
                +connect-status-err-conn-type+))))
-    
+
     (is (= (length (invocations 'usocket:socket-send)) 1))
     (is (>= (length (invocations 'usocket:socket-receive)) 1))))
 
@@ -211,6 +209,25 @@ In case of this the log must be checked."
     
     (is (= (length (invocations 'usocket:socket-send)) 1))
     (is (>= (length (invocations 'usocket:socket-receive)) 1))))
+
+(test connect--starts-heartbeat--ok
+  (with-fixture env (nil t)
+    (answer usocket:socket-send t)
+    (answer usocket:socket-receive *connect-response-data-ok*)
+    (answer knx-client:send-connection-state t)
+
+    (setf knx-client::*heartbeat-interval-secs* 1.0)
+    (let ((response-fut (establish-tunnel-connection t)))
+      (destructuring-bind (resp err)
+          (fawait response-fut :timeout 1.5)
+        (declare (ignore err))
+        (is (= (connect-response-status resp)
+               +connect-status-no-error+))))
+    
+    (is (= (length (invocations 'usocket:socket-send)) 1))
+    (is (>= (length (invocations 'usocket:socket-receive)) 1))
+    (is-true (await-cond 2.5
+               (>= (length (invocations 'knx-client:send-connection-state)) 1)))))
 
 ;; --------------------------------------
 ;; disconnect request/response
@@ -293,16 +310,6 @@ In case of this the log must be checked."
                    "No open connection!"))))
     (is (= (length (invocations 'usocket:socket-send)) 0))
     (is (= (length (invocations 'usocket:socket-receive)) 0))))
-
-;; (test connection-state--send-as-heartbeat--ok
-;;   (with-mocks ()
-;;     (answer (ip-client:ip-send-knx-data req)
-;;       (assert (typep req 'knx-connstate-request) nil "wrong request type")
-;;       t)
-;;     (let ((knx-client::*heartbeat-interval-secs* 1))
-;;       (with-fixture env (nil nil)
-;;         (is-true (await-cond 1.5
-;;                    (>= (length (invocations 'ip-client:ip-send-knx-data)) 1)))))))
 
 ;; --------------------------------------
 ;; tunneling request receival

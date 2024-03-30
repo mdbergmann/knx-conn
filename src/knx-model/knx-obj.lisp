@@ -9,6 +9,7 @@
            #:header-knxnetip-version
            #:header-type
            #:header-body-len
+           #:+knx-header-len+
            ;; package
            #:knx-package
            #:package-header

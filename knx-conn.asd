@@ -87,7 +87,10 @@ OK - rework *rceived-things* to be a hash-table with key (req type) and value (t
 OK - use atomic for *tunnel-request-listener* (handled through actor)
 OK - default cemi tests
 OK - more error handling tests
+OK - implement optimized dpt-1,2,3 data packaging
 ? - cleanup routine for *awaited-things* that cleans up orphaned things
+- implement proper protocol. Send Ack after receiving ind.
+- check for .con (confirmation) after sending .req
 => - register awaiting response before sending (!), or the response can be received before wait is called
 - test for heartbeat in knx-client-test
 - connstate (heartbeat): check for 3 failed requests

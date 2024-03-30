@@ -411,17 +411,18 @@ x... .... destination address type
           (let* ((apci (cemi-apci cemi))
                  (data (cemi-data cemi))
                  (npdu-len (cemi-npdu-len cemi))
-                 (dpt-value (cond
+                 (dpt-value (cond ; necessary? mainly unused below.
                               ((null data) 0)
                               ((arrayp data) (aref data 0)) ; ?
-                              (t (dpt-value data)))))
+                              (t ;; dpt
+                               (dpt-raw-value data)))))
             (logior (logand (apci-start-code apci) #xff)
                     (cond
                       ((apci-gv-read-p apci) #x00)
                       ((or
                         (apci-gv-response-p apci)
                         (apci-gv-write-p apci))
-                       (if (= 1 npdu-len)
+                       (if (= 1 npdu-len) ;; optimized dpt == 1
                            (prog1
                                (logand dpt-value #x3f)
                              (setf optimized-apci t))
@@ -525,8 +526,9 @@ x... .... destination address type
                  ((or
                    (apci-gv-response-p apci)
                    (apci-gv-write-p apci))
-                  ;; TODO: support for optimized dpts
-                  (+ 1 (dpt-byte-len dpt)))
+                  (if (dpt-supports-optimized-p dpt)
+                      1
+                      (+ 1 (dpt-byte-len dpt))))
                  (t (error "APCI not supported")))
      :tpci tpci
      :packet-num packet-num

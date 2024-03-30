@@ -6,8 +6,10 @@
   (:export #:dpt
            #:dpt-value-type
            #:dpt-value
+           #:dpt-raw-value
            #:value-type-string-to-symbol
            #:dpt-byte-len
+           #:dpt-supports-optimized-p
            #:parse-to-dpt
            #:dpt1
            #:make-dpt1
@@ -65,6 +67,12 @@
 (defgeneric dpt-value (dpt)
   (:documentation "Return the specific value of the DPT"))
 
+(defgeneric dpt-raw-value (dpt)
+  (:documentation "Return the raw value of the DPT"))
+
+(defgeneric dpt-supports-optimized-p (dpt)
+  (:documentation "Check if the DPT supports optimized npdu handling."))
+
 (defstruct (dpt (:include knx-obj)
                 (:conc-name dpt-)
                 (:constructor nil))
@@ -93,6 +101,12 @@ Range:      b = {0 = off, 1 = on}"
 
 (defmethod dpt-value ((dpt dpt1))
   (dpt1-value dpt))
+
+(defmethod dpt-raw-value ((dpt dpt1))
+  (dpt1-raw-value dpt))
+
+(defmethod dpt-supports-optimized-p ((dpt dpt1))
+  t)
 
 (defmethod to-byte-seq ((dpt dpt1))
   (vector (dpt1-raw-value dpt)))
@@ -143,6 +157,12 @@ Encoding:   Float Value = (0.01 * M)*2(E)
 
 (defmethod dpt-value ((dpt dpt9))
   (dpt9-value dpt))
+
+(defmethod dpt-raw-value ((dpt dpt9))
+  (dpt9-raw-value dpt))
+
+(defmethod dpt-supports-optimized-p ((dpt dpt9))
+  nil)
 
 (defmethod to-byte-seq ((dpt dpt9))
   (dpt9-raw-value dpt))

@@ -65,12 +65,10 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
 (defun knx-conn-destroy ()
   "Close the KNX connection and destroy the internal structures."
   (log:info "Destroying KNX...")
-  ;; clear stuff
-  (when *async-handler*
-    (clr-tunnelling-request-listeners))
   ;; close stuff
   (ignore-errors
-   (close-tunnel-connection))
+   (fawait (close-tunnel-connection) :timeout 5))
+  (clr-tunnelling-request-listeners)
   (ignore-errors
    (ip-disconnect))
   (ignore-errors
