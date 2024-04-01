@@ -12,6 +12,8 @@
 
 (defconstant +hpai-udp+ #x01
   "Host Protocol Address Information (HPAI) UDP")
+(defconstant +hpai-tcp+ #x02
+  "Host Protocol Address Information (HPAI) TCP")
 
 (defstruct (hpai (:include knx-obj)
                  (:constructor %make-hpai))
@@ -35,13 +37,16 @@
 
 (defun make-hpai (ip-address ip-port)
   "Creates a HPAI structure from the given ip-address and ip-port.
-The ip-address is a string in the form of \"192.168.1.1\".
+The ip-address is a string in the form of \"192.168.1.1\" or an octet vector.
 The ip-port is an integer between 0 and 65535."
-  (check-type ip-address string)
+  (check-type ip-address (or string (vector octet 4) (simple-vector 4)))
   (check-type ip-port (integer 0 65535))
-  (let ((ip-addr (map '(vector octet)
-                      #'parse-integer
-                      (uiop:split-string ip-address :separator ".")))
+  (let ((ip-addr (typecase ip-address
+                   (string (map '(vector octet)
+                                #'parse-integer
+                                (uiop:split-string ip-address :separator ".")))
+                   (simple-vector (coerce ip-address '(vector octet)))
+                   (vector ip-address)))
         (ip-port (int-to-byte-vec ip-port)))
     (%make-hpai :ip-address ip-addr :ip-port ip-port)))
 

@@ -77,4 +77,15 @@
             (knxutil:seq-to-array #(0) :arr-type 'vector))
       (is (equalp req req-from-bytes)))))
 
-;; TODO: Add more tests
+(test ack--to-bytes
+  (let ((req (make-tunnelling-ack
+              (make-tunnelling-request
+               :channel-id 0
+               :seq-counter 0
+               :cemi (make-default-cemi
+                      :message-code +cemi-mc-l_data.ind+
+                      :dest-address (address:make-group-address "1/2/3")
+                      :apci (make-apci-gv-write)
+                      :dpt (dpt:make-dpt1 :switch :off))))))
+    (is (not (null req)))
+    (is (typep (knxobj:to-byte-seq req) '(vector knxobj:octet)))))

@@ -50,7 +50,7 @@
              (format s "KNX timeout error: ~a" (simple-condition-format-control c)))))
 
 ;; ---------------------------------
-;; global variables
+;; configuration
 ;; ---------------------------------
 
 (defparameter *resp-wait-timeout-secs* 3
@@ -74,6 +74,10 @@ Only applicable if `start-receive` is true in `knx-conn-init`.")
 (defparameter *heartbeat-interval-secs* +default-heartbeat-interval-secs+
   "Interval in seconds for sending a connection-state request to the KNXnet/IP gateway.")
 
+;; ---------------------------------
+;; global variables
+;; ---------------------------------
+
 (defvar *channel-id* nil
   "The channel-id of the current tunnelling connection.")
 
@@ -96,7 +100,9 @@ Only applicable if `start-receive` is true in `knx-conn-init`.")
           nil "No open connection!"))
 
 (defun %next-seq-counter ()
-  (setf *seq-counter* (mod (1+ *seq-counter*) 255)))
+  (prog1
+      *seq-counter*
+    (setf *seq-counter* (mod (1+ *seq-counter*) 255))))
 
 (defun add-tunnelling-request-listener (listener-fun)
   (! *async-handler* `(:add-tunnel-req-listener . ,listener-fun)))
@@ -146,10 +152,24 @@ Only applicable if `start-receive` is true in `knx-conn-init`.")
 Returns a future. The result will be a list of the received response and an error condition, if any.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol."
   (log:info "Retrieving description information...")
-  (! *async-handler* `(:send
+  (! *async-handler* `(:send-ctrl
                        . ,(make-descr-request *hpai-unbound-addr*)))
   (? *async-handler* `(:wait-on-resp
                        . (knx-descr-response
+                          ,(get-universal-time)
+                          ,*resp-wait-timeout-secs*))))
+
+(defun send-connection-state ()
+  "Sends a connection-state request to the KNXnet/IP gateway. The response to this request will be received asynchronously.
+Returns the request that was sent.
+This request should be sent every some seconds (i.e. 60) as a heart-beat to keep the connection alive."
+  (%assert-channel-id)
+  (! *async-handler* `(:send-ctrl
+                       . ,(make-connstate-request
+                           *channel-id*
+                           ip-client:*ctrl-local-host-and-port*)))
+  (? *async-handler* `(:wait-on-resp
+                       . (knx-connstate-response
                           ,(get-universal-time)
                           ,*resp-wait-timeout-secs*))))
 
@@ -160,7 +180,10 @@ The error condition will be of type `knx-receive-error` and reflects just an err
 
 If the connection is established successfully, the channel-id will be stored in the global variable `*channel-id*`."
   (log:info "Establishing tunnel connection...")
-  (! *async-handler* `(:send . ,(make-connect-request)))
+  (! *async-handler* `(:send-ctrl
+                       . ,(make-connect-request
+                           ip-client:*ctrl-local-host-and-port*
+                           ip-client:*data-local-host-and-port*)))
   (let ((fut
           (? *async-handler*
              `(:wait-on-resp
@@ -188,7 +211,10 @@ If the connection is established successfully, the channel-id will be stored in 
   (%assert-channel-id)
   (%stop-heartbeat)
   (log:info "Closing tunnel connection...")
-  (! *async-handler* `(:send . ,(make-disconnect-request *channel-id*)))
+  (! *async-handler* `(:send-ctrl
+                       . ,(make-disconnect-request
+                           *channel-id*
+                           ip-client:*ctrl-local-host-and-port*)))
   (let ((fut
           (? *async-handler*
              `(:wait-on-resp
@@ -209,18 +235,6 @@ If the connection is established successfully, the channel-id will be stored in 
 (defun tunnel-connection-established-p ()
   "Returns true if a tunnel connection is established."
   (integerp *channel-id*))
-
-(defun send-connection-state ()
-  "Sends a connection-state request to the KNXnet/IP gateway. The response to this request will be received asynchronously.
-Returns the request that was sent.
-This request should be sent every some seconds (i.e. 60) as a heart-beat to keep the connection alive."
-  (%assert-channel-id)
-  (! *async-handler* `(:send
-                       . ,(make-connstate-request *channel-id*)))
-  (? *async-handler* `(:wait-on-resp
-                       . (knx-connstate-response
-                          ,(get-universal-time)
-                          ,*resp-wait-timeout-secs*))))
 
 ;; ---------------------------------
 ;; tunnelling-request functions
@@ -243,8 +257,8 @@ Returns the request that was sent.
                      :apci (make-apci-gv-write)
                      :dpt dpt))))
     (if sync
-        (act:ask-s *async-handler* `(:send . ,req))
-        (! *async-handler* `(:send . ,req)))
+        (act:ask-s *async-handler* `(:send-data . ,req))
+        (! *async-handler* `(:send-data . ,req)))
     req))
 
 (defun send-read-request (group-address)
@@ -260,7 +274,7 @@ Returns the request that was sent."
                      :dest-address group-address
                      :apci (make-apci-gv-read)
                      :dpt nil))))
-    (! *async-handler* `(:send . ,req))
+    (! *async-handler* `(:send-data . ,req))
     req))
 
 ;; ---------------------------------
@@ -271,15 +285,14 @@ Returns the request that was sent."
   "Allows the following messages:
 
 - `(:send . <request>)` to send an knx request to the gateway.
-
 - `(:receive . nil)` to start receive knx requests/responses from the gateway. The receival itself is done in a separate task (sento.tasks API). The result of the receival is forwarded to:
-
 - `(:received . <result>)` looks at what is the type of the received.
 For `knx-tunnelling-request`s the registered listener functions will be called. All else will be enqueued in the `*awaited-things*` list, for `:wait-on-resp` to check.
-
 - `(:wait-on-resp . (<resp-type> <start-time> <wait-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + <wait-time> (defaults to *resp-wait-timeout-secs*)` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request.
-
-- `(:heartbeat . nil)` to send a connection-state request to the KNXnet/IP gateway."
+- `(:heartbeat . nil)` to send a connection-state request to the KNXnet/IP gateway.
+- `(:add-tunnel-req-listener . <listener-fun>)` to add a listener function for tunnelling requests.
+- `(:rem-tunnel-req-listener . <listener-fun>)` to remove a listener function for tunnelling requests.
+- `(:clr-tunnel-req-listeners . nil)` to clear all listener functions for tunnelling requests."
   (destructuring-bind (msg-sym . args) msg
     (log:trace "Async-handler received msg: ~a" msg-sym)
     (let ((self act:*self*)
@@ -301,31 +314,55 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                                       . (,resp-type ,start-time ,resp-wait-time))
                                sender)))))
         (case msg-sym
-          (:send
-           (ip-send-knx-data args))
-        
-          (:receive
-           (doasync :receiver
+          (:send-ctrl
+           (ip-send-knx-data :ctrl args))
+          (:send-data
+           (ip-send-knx-data :data args))
+
+          (:receive-ctrl
+           (doasync :receiver-ctrl
                     (lambda ()
                       (prog1
                           (handler-case
                               ;; this call blocks until data is available
                               ;; or there is an error
-                              (ip-receive-knx-data)
+                              (ip-receive-knx-data :ctrl)
                             (error (c)
-                              (log:warn "Error on receiving: ~a" c)))
+                              (log:warn "Error on receiving (ctrl): ~a" c)))
                         (sleep *receive-knx-data-recur-delay-secs*)
-                        (when (ip-connected-p)
-                          (! self `(:receive . nil)))))
+                        (when (ip-connected-p :ctrl)
+                          (! self `(:receive-ctrl . nil)))))
                     (lambda (result)
                       (handler-case
                           (when (and result (car result))
-                            (log:debug "KNX message received: (~a ~a)"
+                            (log:debug "KNX message received (ctrl): (~a ~a)"
                                        (type-of (first result))
                                        (second result))
                             (! self `(:received . ,result)))
                         (error (c)
-                          (log:warn "Error on received: ~a" c))))))
+                          (log:warn "Error on received (ctrl): ~a" c))))))
+          (:receive-data
+           (doasync :receiver-data
+                    (lambda ()
+                      (prog1
+                          (handler-case
+                              ;; this call blocks until data is available
+                              ;; or there is an error
+                              (ip-receive-knx-data :data)
+                            (error (c)
+                              (log:warn "Error on receiving (data): ~a" c)))
+                        (sleep *receive-knx-data-recur-delay-secs*)
+                        (when (ip-connected-p :data)
+                          (! self `(:receive-data . nil)))))
+                    (lambda (result)
+                      (handler-case
+                          (when (and result (car result))
+                            (log:debug "KNX message received (data): (~a ~a)"
+                                       (type-of (first result))
+                                       (second result))
+                            (! self `(:received . ,result)))
+                        (error (c)
+                          (log:warn "Error on received (data): ~a" c))))))
 
           (:received
            (destructuring-bind (received err) args
@@ -334,17 +371,19 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                (typecase received
                  (knx-tunnelling-request
                   (let ((msc (tunnelling-cemi-message-code received)))
+                    (! self `(:send-data . ,(make-tunnelling-ack received)))
                     (log:info "Received tunnelling request with msg-code: ~a"
                               (cemi-mc-l_data-rep msc))
                     (cond
                       ((eql msc +cemi-mc-l_data.ind+)
-                       (! self `(:send . ,(make-tunnelling-ack received)))))
-                    (progn
-                      (log:debug "Notifying listeners of received 'ind' tunnelling request")
-                      (log:debug "Req: ~a" received)
-                      (dolist (listener-fun *tunnel-request-listeners*)
-                        (ignore-errors
-                         (funcall listener-fun received))))))
+                       (progn
+                         (log:debug "Req: ~a" received)
+                         (log:debug "Notifying listeners of _Data.ind request...")
+                         (dolist (listener-fun *tunnel-request-listeners*)
+                           (ignore-errors
+                            (funcall listener-fun received)))))
+                      ((eql msc +cemi-mc-l_data.con+)
+                       (log:info "Received tunnelling confirmation.")))))
                  (knx-tunnelling-ack
                   (progn
                     (log:info "Received tunnelling ack: ~a" received)))
@@ -353,12 +392,15 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                     (log:info "Received ip-disconnect request.")
                     (setf *channel-id* nil)
                     (setf *seq-counter* 0)))
+                 (knx-connect-response
+                  (log:info "Received connect response: ~a" received))
                  (t
-                  (if (null (gethash received-type *awaited-things*))
-                      (log:debug "Discarding received: ~a" received-type)
-                      (progn
-                        (log:debug "Filling awaited response: ~a" received-type)
-                        (setf (gethash received-type *awaited-things*) args))))))))
+                  (log:debug "Received unspecified request: ~a" received-type)))
+               (if (null (gethash received-type *awaited-things*))
+                   (log:debug "Discarding received: ~a" received-type)
+                   (progn
+                     (log:debug "Filling awaited response: ~a" received-type)
+                     (setf (gethash received-type *awaited-things*) args))))))
           
           (:wait-on-resp
            (destructuring-bind (resp-type start-time resp-wait-time) args
@@ -401,7 +443,8 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
 
 (defun start-async-receive ()
   (assert *async-handler* nil "No async-handler set!")
-  (! *async-handler* '(:receive . nil)))
+  (! *async-handler* '(:receive-ctrl . nil))
+  (! *async-handler* '(:receive-data . nil)))
 
 (defun make-async-handler (actor-context)
   (assert (null *async-handler*) nil "Async-handler already set!")

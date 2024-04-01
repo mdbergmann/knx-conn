@@ -90,9 +90,17 @@ OK - more error handling tests
 OK - implement optimized dpt-1,2,3 data packaging
 ? - cleanup routine for *awaited-things* that cleans up orphaned things
 OK - implement proper protocol. Send Ack after receiving ind.
-- check for .con (confirmation) after sending .req
-=> - register awaiting response before sending (!), or the response can be received before wait is called
+OK - check for .con (confirmation) after sending .req
+OK - set endpoint address also for disconnect-req
+OK - check on connect-resp whether a new connection for data has tobe established.
+When port is the same as for ctrl, then not.
+-> not absolutely necessary, one connection is enough, can be controlled by client via conn=> - fix apci-gv-response parsing. is read as gv-read
+- make :wait-for-resp be more dynamic by providing a function that checks the response
+- register awaiting response before sending (!), or the response can be received before wait is called
+ect-request.
 - test for heartbeat in knx-client-test
+- wait for tunnel-ack before allowing next tunnel-request
+- tunnel-ack should arrive in 1 second
 - connstate (heartbeat): check for 3 failed requests
 - extract receive-handlers to separate functions.
 - allow hooks to be registered for value updates on certain group-addresses

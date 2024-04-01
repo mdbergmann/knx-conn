@@ -56,17 +56,17 @@ KNXnet/IP body
   (hpai-data-endpoint (error "Required hpai data endpoint!") :type hpai)
   (cri (error "Required cri!") :type cri))
 
-(defun make-connect-request ()
-  (let ((hpai-ctrl-endpoint *hpai-unbound-addr*)
-        (hpai-data-endpoint *hpai-unbound-addr*)
+(defun make-connect-request (addr-pair-ctrl addr-pair-data)
+  (let ((ctrl-hpai (make-hpai (car addr-pair-ctrl) (cdr addr-pair-ctrl)))
+        (data-hpai (make-hpai (car addr-pair-data) (cdr addr-pair-data)))
         (cri (make-tunneling-cri)))
     (%make-connect-request
      :header (make-header +knx-connect-request+
-                          (+ (hpai-len hpai-ctrl-endpoint)
-                             (hpai-len hpai-data-endpoint)
+                          (+ (hpai-len ctrl-hpai)
+                             (hpai-len data-hpai)
                              (cri-len cri)))
-     :hpai-ctrl-endpoint hpai-ctrl-endpoint
-     :hpai-data-endpoint hpai-data-endpoint
+     :hpai-ctrl-endpoint ctrl-hpai
+     :hpai-data-endpoint data-hpai
      :cri cri)))
 
 (defmethod to-byte-seq ((obj knx-connect-request))
@@ -145,12 +145,13 @@ KNXnet/IP body
   (channel-id (error "channel-id required!") :type octet)
   (hpai *hpai-unbound-addr* :type hpai))
 
-(defun make-disconnect-request (channel-id)
-  (%make-disconnect-request
-   :header (make-header +knx-disconnect-request+
-                        (+ (hpai-len *hpai-unbound-addr*) 2))
-   :channel-id channel-id
-   :hpai *hpai-unbound-addr*))
+(defun make-disconnect-request (channel-id local-addr-pair)
+  (let ((hpai (make-hpai (car local-addr-pair) (cdr local-addr-pair))))
+    (%make-disconnect-request
+     :header (make-header +knx-disconnect-request+
+                          (+ (hpai-len hpai) 2))
+     :channel-id channel-id
+     :hpai hpai)))
 
 (defmethod to-byte-seq ((obj knx-disconnect-request))
   (concatenate '(vector octet)
@@ -221,12 +222,13 @@ KNXnet/IP body
   (channel-id (error "channel-id required!") :type octet)
   (hpai *hpai-unbound-addr* :type hpai))
 
-(defun make-connstate-request (channel-id)
-  (%make-connstate-request
-   :header (make-header +knx-connstate-request+
-                        (+ (hpai-len *hpai-unbound-addr*) 2))
-   :channel-id channel-id
-   :hpai *hpai-unbound-addr*))
+(defun make-connstate-request (channel-id local-addr-pair)
+  (let ((hpai (make-hpai (car local-addr-pair) (cdr local-addr-pair))))
+    (%make-connstate-request
+     :header (make-header +knx-connstate-request+
+                          (+ (hpai-len hpai) 2))
+     :channel-id channel-id
+     :hpai hpai)))
 
 (defmethod to-byte-seq ((obj knx-connstate-request))
   (concatenate '(vector octet)

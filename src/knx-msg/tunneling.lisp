@@ -134,7 +134,7 @@ Connection header
      :conn-header conn-header)))
 
 (defmethod to-byte-seq ((obj knx-tunnelling-ack))
-  (concatenate 'vector
+  (concatenate '(vector octet)
                (call-next-method obj)
                (to-byte-seq (tunnelling-ack-conn-header obj))))
 

@@ -267,7 +267,8 @@ In case of this the log must be checked."
 (test disconnect--received-request--closes-connection
   (with-mocks ()
     (let ((req-bytes (to-byte-seq
-                      (make-disconnect-request 78))))
+                      (make-disconnect-request
+                       78 (cons #(12 23 34 45) 3671)))))
       (answer usocket:socket-receive req-bytes)
 
       (setf knx-client::*channel-id* 78)
@@ -352,8 +353,29 @@ In case of this the log must be checked."
         (is-true (await-cond 1.5
                    (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))
         (is-true (await-cond 1.5
-                   (>= (length (invocations 'ip-client:ip-send-knx-data)) 1)))
-        ))))
+                   (>= (length (invocations 'ip-client:ip-send-knx-data)) 1)))))))
+
+(test tunnelling-received-con-request-should-send-ack
+  (let ((req (make-tunnelling-request
+              :channel-id 78
+              :seq-counter 0
+              :cemi (make-default-cemi
+                     :message-code +cemi-mc-l_data.con+
+                     :dest-address (make-group-address "0/4/10")
+                     :apci (make-apci-gv-write)
+                     :dpt (make-dpt1 :switch :on)))))
+    (with-mocks ()
+      (answer ip-client:ip-receive-knx-data `(,req nil))
+      (answer (ip-client:ip-send-knx-data to-send)
+        (progn
+          (assert (typep to-send 'knx-tunnelling-ack) nil "Not a tunnelling ack!")
+          (assert (= 78 (tunnelling-ack-channel-id to-send)) nil "Wrong channel-id!")
+          (assert (= 0 (tunnelling-ack-seq-counter to-send)) nil "Wrong seq-counter!")))
+      (with-fixture env (nil t)
+        (is-true (await-cond 1.5
+                   (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))
+        (is-true (await-cond 1.5
+                   (>= (length (invocations 'ip-client:ip-send-knx-data)) 1)))))))
 
 ;; --------------------------------------
 ;; tunneling request sending

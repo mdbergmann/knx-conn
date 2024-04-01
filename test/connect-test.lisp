@@ -12,7 +12,7 @@
 (in-suite connect-tests)
 
 (test make-disconnect-request--ok
-  (let ((req (make-disconnect-request 0)))
+  (let ((req (make-disconnect-request 0 (cons #(127 0 0 1) 123))))
     (is (typep req 'knx-disconnect-request))
     (is (= (connect::disconnect-request-channel-id req) 0))
     (is (equalp (connect::disconnect-request-hpai req)
@@ -21,7 +21,7 @@
             (connect::disconnect-request-header req)) 10))))
 
 (test disconnect-request--to-byte-seq
-  (let* ((req (make-disconnect-request 0))
+  (let* ((req (make-disconnect-request 0 (cons #(127 0 0 1) 123)))
          (bytes (to-byte-seq req)))
     (is (vectorp bytes))
     (is (= (length bytes) 16))))
@@ -44,19 +44,20 @@
     (is (= (connect::disconnect-response-status resp) 0))))
 
 (test make-connstate-request--ok
-  (let ((req (make-connstate-request 0)))
+  (let ((hpai (make-hpai #(127 0 0 1) 123))
+        (req (make-connstate-request 0 (cons "127.0.0.1" 123))))
     (is (typep req 'knx-connstate-request))
     (is (= connect::+knx-connstate-request+
            (header-type
             (connect::connstate-request-header req))))
     (is (= (connect::connstate-request-channel-id req) 0))
     (is (equalp (connect::connstate-request-hpai req)
-                *hpai-unbound-addr*))
+                hpai))
     (is (= (header-body-len
             (connect::connstate-request-header req)) 10))))
 
 (test connstate-request--to-byte-seq
-  (let* ((req (make-connstate-request 0))
+  (let* ((req (make-connstate-request 0 (cons "127.0.0.1" 123)))
          (bytes (to-byte-seq req)))
     (is (vectorp bytes))
     (is (= (length bytes) 16))))

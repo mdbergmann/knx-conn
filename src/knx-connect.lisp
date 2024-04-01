@@ -25,7 +25,8 @@
     (log:info "Creating actor system...")
     (setf *asys* (asys:make-actor-system '(:dispatchers
                                            (:shared (:workers 2)
-                                            :receiver (:workers 1)
+                                            :receiver-ctrl (:workers 1)
+                                            :receiver-data (:workers 1)
                                             :waiter (:workers 1)
                                             :read-request (:workers 1)))))))
 
