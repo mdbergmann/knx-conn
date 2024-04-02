@@ -104,22 +104,24 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
           (let* ((cemi (tunnelling-request-cemi req))
                  (ga (cemi-destination-addr cemi)))
             (log:debug "Received request for ga: ~a" ga)
-            (when (equalp ga ,requested-ga)
+            (when (and (equalp ga ,requested-ga)
+                       (eql (tunnelling-cemi-message-code req)
+                            +cemi-mc-l_data.ind+)
+                       (apci-gv-response-p (cemi-apci cemi)))
+              (log:debug "Matches requested ga: ~a" ga)
               (rem-tunnelling-request-listener listener-fun)
               (handler-case
-                  (progn
-                    (log:debug "Matches requested ga: ~a" ga)
-                    (let* ((cemi-data (cemi-data cemi))
-                           (dpt (etypecase cemi-data
-                                  (dpt
-                                   cemi-data)
-                                  ((vector octet)
-                                   (parse-to-dpt ,dpt-type
-                                                 cemi-data))))
-                           (value (dpt-value dpt)))
-                      (log:debug "Received requested value: ~a for ga: ~a"
-                                 dpt group-address)
-                      (fresolve value)))
+                  (let* ((cemi-data (cemi-data cemi))
+                         (dpt (etypecase cemi-data
+                                (dpt
+                                 cemi-data)
+                                ((vector octet)
+                                 (parse-to-dpt ,dpt-type
+                                               cemi-data))))
+                         (value (dpt-value dpt)))
+                    (log:debug "Received requested value: ~a for ga: ~a"
+                               dpt group-address)
+                    (fresolve value))
                 (error (e)
                   (log:error "Error in listener-fun: ~a" e)
                   (fresolve e))))))))))

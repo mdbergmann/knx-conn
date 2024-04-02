@@ -357,7 +357,6 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                       ((eql msc +cemi-mc-l_data.con+)
                        (log:info "Received tunnelling confirmation.")))
                     (progn
-                      (log:debug "Req: ~a" received)
                       (log:debug "Notifying listeners of generic L_Data request...")
                       (dolist (listener-fun *tunnel-request-listeners*)
                         (ignore-errors

@@ -135,7 +135,7 @@ Client --> | KNX Net/IP |     KNX device  (TUNNELING_ACK to KNX Net/IP)")
 (defstruct (apci (:constructor nil)
                  (:conc-name apci-))
   (start-code #x00 :type octet :read-only t)
-  (end-code #x00 :type octet :read-only t))
+  (mask #x00 :type octet :read-only t))
 ;; +-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
 ;; |                         0   0 | 0   0   0   0   0   0   0   0 |
 ;; +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
@@ -144,7 +144,8 @@ Client --> | KNX Net/IP |     KNX device  (TUNNELING_ACK to KNX Net/IP)")
   "Group Value Read")
 
 (defun make-apci-gv-read ()
-  (%make-apci-gv-read :start-code #x00 :end-code #x00))
+  (%make-apci-gv-read :start-code #x00 :mask #x00))
+(defparameter *apci-gv-read* (make-apci-gv-read))
 
 ;; +-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
 ;; |                         0   0 | 0   1   n   n   n   n   n   n |
@@ -154,7 +155,8 @@ Client --> | KNX Net/IP |     KNX device  (TUNNELING_ACK to KNX Net/IP)")
   "Group Value Response")
 
 (defun make-apci-gv-response ()
-  (%make-apci-gv-read :start-code #x40 :end-code #x7f))
+  (%make-apci-gv-response :start-code #x40 :mask #x7f))
+(defparameter *apci-gv-response* (make-apci-gv-response))
 
 ;; +-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
 ;; |                         0   0 | 1   0   n   n   n   n   n   n |
@@ -164,26 +166,20 @@ Client --> | KNX Net/IP |     KNX device  (TUNNELING_ACK to KNX Net/IP)")
   "Group Value Write")
 
 (defun make-apci-gv-write ()
-  (%make-apci-gv-write :start-code #x80 :end-code #xbf))
+  (%make-apci-gv-write :start-code #x80 :mask #xbf))
+(defparameter *apci-gv-write* (make-apci-gv-write))
 
 (defgeneric apci-equal-p (apci apci-value)
   (:documentation "Return T if APCI is equal to APCI-VALUE"))
 
 (defmethod apci-equal-p ((apci apci-gv-write) apci-value)
-  (and (>= apci-value (apci-start-code apci))
-       (<= apci-value (apci-end-code apci))))
+  (> (logand apci-value (apci-start-code apci)) 0))
 
 (defmethod apci-equal-p ((apci apci-gv-response) apci-value)
-  (and (>= apci-value (apci-start-code apci))
-       (<= apci-value (apci-end-code apci))))
+  (> (logand apci-value (apci-start-code apci)) 0))
 
 (defmethod apci-equal-p ((apci apci-gv-read) apci-value)
   (= apci-value (apci-start-code apci)))
-
-(defparameter *apcis* (list (make-apci-gv-read)
-                            (make-apci-gv-response)
-                            (make-apci-gv-write))
-  "List of supported APCI values")
 
 
 (defstruct (cemi (:include knx-obj)
@@ -479,10 +475,13 @@ x... .... destination address type
                       (let ((apci-value (to-int
                                          (logand (aref npdu 1) #x03)
                                          (logand (aref npdu 2) #xc0))))
-                        (find-if (lambda (apci)
-                                   (apci-equal-p
-                                    apci apci-value))
-                                 *apcis*))))
+                        (cond
+                          ((apci-equal-p *apci-gv-response* apci-value)
+                           *apci-gv-response*)
+                          ((apci-equal-p *apci-gv-write* apci-value)
+                           *apci-gv-write*)
+                          ((apci-equal-p *apci-gv-read* apci-value)
+                           *apci-gv-read*)))))
               (data (when npdu
                       (cond
                         ((apci-gv-read-p apci)

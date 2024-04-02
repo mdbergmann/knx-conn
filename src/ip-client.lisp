@@ -37,10 +37,7 @@
   "Disconnect from the KNXnet/IP gateway."
   (log:info "Disconnecting from KNXnet/IP gateway")
   (when *conn*
-    (log:info "Closing ctrl connection")
-    (usocket:socket-close *conn*))
-  (when *conn*
-    (log:info "Closing data connection")
+    (log:info "Closing connection")
     (usocket:socket-close *conn*))
   (setf *conn* nil)
   (setf *local-host-and-port* nil))
@@ -55,7 +52,7 @@
     (log:debug "Sending obj: ~a" (type-of request))
     (let ((req-bytes (to-byte-seq request)))
       (check-type req-bytes (simple-array octet (*)))
-      (log:debug "Sending bytes: ~a" req-bytes)
+      (log:trace "Sending bytes: ~a" req-bytes)
       (usocket:socket-send conn req-bytes (length req-bytes)))
     request))
 
@@ -68,7 +65,7 @@
                   (parse-root-knx-object
                    (usocket:socket-receive conn buf 256))))
             (log:debug "Received obj type: ~a" (type-of received-obj))
-            (log:trace "Received bytes: ~a" buf)
+            (log:trace"Received bytes: ~a" buf)
             `(,received-obj nil))
         (error (e)
           (log:warn "Error: ~a" e)
