@@ -96,14 +96,14 @@ OK - check on connect-resp whether a new connection for data has tobe establishe
 When port is the same as for ctrl, then not.
 -> not absolutely necessary, one connection is enough, can be controlled by client via conn
 OK - revert back to single channel for simplicity
-=> - fix apci-gv-response parsing. is read as gv-read
-- with-knx/ip, bail out if no connection-response received
+OK - fix apci-gv-response parsing. is read as gv-read
+OK - with-knx/ip, bail out if no connection-response received
+OK - test for heartbeat in knx-client-test
 - remove use of *conn* and *local-host-and-port*
 - make :wait-for-resp be more dynamic by providing a function that checks the response
 allow sending L_Data.req wait for L_Data.con, etc.
 - register awaiting response before sending (!), or the response can be received before wait is called
 ect-request.
-- test for heartbeat in knx-client-test
 - wait for tunnel-ack before allowing next tunnel-request
 - tunnel-ack should arrive in 1 second
 - connstate (heartbeat): check for 3 failed requests

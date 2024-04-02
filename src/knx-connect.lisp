@@ -58,29 +58,23 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
   (when start-receive
     (log:info "Starting async-receive...")
     (start-async-receive))
-  (fawait (establish-tunnel-connection enable-heartbeat) :timeout 10)
+  (fawait (establish-tunnel-connection enable-heartbeat) :timeout 5)
   (unless (tunnel-connection-established-p)
     (error "Could not establish tunnel connection!")))
 
 (defun knx-conn-destroy ()
   "Close the KNX connection and destroy the internal structures."
   (log:info "Destroying KNX...")
-  ;; close stuff
   (ignore-errors
    (fawait (close-tunnel-connection) :timeout 5))
   (when *async-handler*
     (clr-tunnelling-request-listeners))
   (ignore-errors
-   (ip-disconnect))
-  (ignore-errors
+   (ip-disconnect)
    (%shutdown-asys))
   (when *async-handler*
     (setf *async-handler* nil))
-  ;; reset stuff
-  (setf knx-client:*receive-knx-data-recur-delay-secs*
-        knx-client:*default-receive-knx-data-recur-delay-secs*)
-  (setf knx-client::*heartbeat-interval-secs*
-        knx-client::+default-heartbeat-interval-secs+))
+  (reset-vars))
 
 ;; ---------------------------------
 ;; convenience functions and macro DSL
@@ -88,7 +82,7 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
 
 (defun write-value (group-address dpt-type value &key (sync nil))
   "Write the given `value` to the `group-address` with the given `dpt-type`.
-`sync`: send the request aynchronous. Block until it has been sent."
+`sync`: `T` send the request synchronous. Block until it has been sent."
   (log:info "Writing value: ~a (~a) to ga: ~a" value dpt-type group-address)
   (send-write-request (address:make-group-address group-address)
                       (cond

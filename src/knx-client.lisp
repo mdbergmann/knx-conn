@@ -22,6 +22,7 @@
            #:*receive-knx-data-recur-delay-secs*
            #:*default-receive-knx-data-recur-delay-secs*
            #:*resp-wait-timeout-secs*
+           #:reset-vars
            ;; async handler
            #:*async-handler*
            #:async-handler-receive
@@ -95,6 +96,12 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
   "The signature of the heartbeat timer.")
 
 ;; ----------- helper functions ------------
+
+(defun reset-vars ()
+  (setf *receive-knx-data-recur-delay-secs*
+        *default-receive-knx-data-recur-delay-secs*)
+  (setf *heartbeat-interval-secs*
+        +default-heartbeat-interval-secs+))
 
 (defun %assert-channel-id ()
   (assert (integerp *channel-id*)
