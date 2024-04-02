@@ -10,8 +10,8 @@
            #:conn-header-channel-id
            #:conn-header-seq-counter
            #:tunnelling-cemi-message-code
-           #:tunnelling-ack-channel-id
-           #:tunnelling-ack-seq-counter
+           #:tunnelling-channel-id
+           #:tunnelling-seq-counter
            ))
 
 (in-package :knx-conn.tunnelling)
@@ -49,8 +49,26 @@
           (conn-header-seq-counter obj)
           (conn-header-reserved obj)))
 
+(defstruct (knx-tunnelling-base (:include knx-package)
+                                (:conc-name tunnelling-))
+  "Base class for KNXnet/IP Tunnelling Request and Acknowledgement
+Connection header
++-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+| Structure Length            | Communication Channel ID        |
+| (1 octet)                   | (1 octet)                       |
++---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+| Sequence Counter            | Status                          |
+| (1 octet)                   | (1 octet)                       |
++-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+"
+  (conn-header (error "Required conn-header!") :type connection-header))
 
-(defstruct (knx-tunnelling-request (:include knx-package)
+(defun tunnelling-channel-id (tunnelling-msg)
+  (conn-header-channel-id (tunnelling-conn-header tunnelling-msg)))
+
+(defun tunnelling-seq-counter (tunnelling-msg)
+  (conn-header-seq-counter (tunnelling-conn-header tunnelling-msg)))
+
+(defstruct (knx-tunnelling-request (:include knx-tunnelling-base)
                                    (:conc-name tunnelling-request-)
                                    (:constructor %make-tunnelling-request))
   "KNXnet/IP header
@@ -75,7 +93,6 @@ cEMI frame
 | Service Information                                           |
 | (variable length)                                             |
 +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+"
-  (conn-header (error "Required conn-header!") :type connection-header)
   (cemi (error "Required cemi!") :type cemi))
 
 (defmethod parse-to-obj ((obj-type (eql +knx-tunnelling-request+)) header body)
@@ -89,7 +106,7 @@ cEMI frame
 (defmethod to-byte-seq ((obj knx-tunnelling-request))
   (concatenate '(vector octet)
                (call-next-method obj)
-               (to-byte-seq (tunnelling-request-conn-header obj))
+               (to-byte-seq (tunnelling-conn-header obj))
                (to-byte-seq (tunnelling-request-cemi obj))))
 
 (defun make-tunnelling-request (&key channel-id seq-counter cemi)
@@ -110,21 +127,12 @@ cEMI frame
 ;; Tunnelling ack
 ;; -------------------------------
 
-(defstruct (knx-tunnelling-ack (:include knx-package)
+(defstruct (knx-tunnelling-ack (:include knx-tunnelling-base)
                                (:conc-name tunnelling-ack-)
                                (:constructor %make-tunnelling-ack))
   "KNXnet/IP header
 
-KNXnet/IP body
-Connection header
-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
-| Structure Length            | Communication Channel ID        |
-| (1 octet)                   | (1 octet)                       |
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-| Sequence Counter            | Status                          |
-| (1 octet)                   | (1 octet)                       |
-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+"
-  (conn-header (error "Required conn-header!") :type connection-header))
+KNXnet/IP body contains only conn-header, see above.")
 
 (defmethod parse-to-obj ((obj-type (eql +knx-tunnelling-ack+)) header body)
   (let ((conn-header (%parse-conn-header
@@ -136,13 +144,7 @@ Connection header
 (defmethod to-byte-seq ((obj knx-tunnelling-ack))
   (concatenate '(vector octet)
                (call-next-method obj)
-               (to-byte-seq (tunnelling-ack-conn-header obj))))
-
-(defun tunnelling-ack-channel-id (tunnelling-ack)
-  (conn-header-channel-id (tunnelling-ack-conn-header tunnelling-ack)))
-
-(defun tunnelling-ack-seq-counter (tunnelling-ack)
-  (conn-header-seq-counter (tunnelling-ack-conn-header tunnelling-ack)))
+               (to-byte-seq (tunnelling-conn-header obj))))
 
 (defun make-tunnelling-ack (tunnelling-request)
   (let ((request-conn-header

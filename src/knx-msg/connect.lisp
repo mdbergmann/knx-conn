@@ -57,6 +57,8 @@ KNXnet/IP body
   (cri (error "Required cri!") :type cri))
 
 (defun make-connect-request (addr-pair-ctrl addr-pair-data)
+  (assert (and addr-pair-ctrl addr-pair-data) nil
+          "addr-pair-ctrl and addr-pair-data required!")
   (let ((ctrl-hpai (make-hpai (car addr-pair-ctrl) (cdr addr-pair-ctrl)))
         (data-hpai (make-hpai (car addr-pair-data) (cdr addr-pair-data)))
         (cri (make-tunneling-cri)))

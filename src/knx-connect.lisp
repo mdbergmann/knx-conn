@@ -25,8 +25,7 @@
     (log:info "Creating actor system...")
     (setf *asys* (asys:make-actor-system '(:dispatchers
                                            (:shared (:workers 2)
-                                            :receiver-ctrl (:workers 1)
-                                            :receiver-data (:workers 1)
+                                            :receiver (:workers 1)
                                             :waiter (:workers 1)
                                             :read-request (:workers 1)))))))
 
@@ -69,7 +68,8 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
   ;; close stuff
   (ignore-errors
    (fawait (close-tunnel-connection) :timeout 5))
-  (clr-tunnelling-request-listeners)
+  (when *async-handler*
+    (clr-tunnelling-request-listeners))
   (ignore-errors
    (ip-disconnect))
   (ignore-errors

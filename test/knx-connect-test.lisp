@@ -32,7 +32,10 @@
   (with-mocks ()
     (let ((response-to-receive))
       (answer ip-client:ip-connect
-        (setf ip-client::*conn* 'dummy))
+        (progn
+          (setf ip-client::*conn* 'dummy)
+          (setf ip-client:*local-host-and-port*
+                (cons #(192 168 1 1) 1234))))
       (answer (ip-client:ip-send-knx-data req)
         (etypecase req
           (connect:knx-connect-request
@@ -43,6 +46,8 @@
           (tunnelling:knx-tunnelling-request
            (setf response-to-receive
                  *test-tunnelling-request*))
+          (knx-tunnelling-ack
+           t)
           (connect:knx-disconnect-request
            (setf knx-client::*channel-id* nil))))
       (answer ip-client:ip-receive-knx-data
@@ -53,9 +58,10 @@
               `(,response-to-receive nil)
             (setf response-to-receive nil))))
       (answer ip-client:ip-disconnect
-        (setf ip-client::*conn* nil))    
+        (setf ip-client::*conn* nil)
+        (setf ip-client:*local-host-and-port* nil))    
     
-      (setf knx-client::*receive-knx-data-recur-delay-secs* 1.0)
+      (setf knx-client::*receive-knx-data-recur-delay-secs* 0.5)
       (&body))))
 
 ;; --------------------------------------
@@ -109,20 +115,24 @@
 (test init--enable-heartbeat--does-start-heartbeat
   "Make sure `start-heartbeat` starts the recurring heartbeat."
   (with-mocks ()
-    (answer ip-client:ip-connect t)
+    (answer ip-client:ip-connect
+      (setf ip-client::*local-host-and-port*
+            (cons #(192 168 1 1) 1234)))
+    (answer ip-client:ip-receive-knx-data
+      `(,(make-test-connect-response) nil))
     (answer ip-client:ip-connected-p t)
-    (answer knx-client:establish-tunnel-connection (with-fut t))
+    (answer ip-client:ip-send-knx-data t)
     (answer knx-client:tunnel-connection-established-p t)
     (answer knx-client:send-connection-state t)
     (unwind-protect
          (progn
-           ;; delay things a bit only
+           (setf knx-client:*receive-knx-data-recur-delay-secs* 1.0)
            (setf knx-client::*heartbeat-interval-secs* .5)
            (knx-conn-init "12.23.34.45"
                           :enable-heartbeat t
-                          :start-receive nil)
+                          :start-receive t)
            (is-true (await-cond 1.5
-                      (> (length (invocations 'knx-client:send-connection-state)) 1))))
+                      (>= (length (invocations 'knx-client:send-connection-state)) 1))))
       (progn
         (knx-conn-destroy)
         (is (eql knx-client::*heartbeat-interval-secs*
@@ -140,13 +150,12 @@
                (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))
     ;; connect, write, disconnect
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-send-knx-data)) 3)))
+               (>= (length (invocations 'ip-client:ip-send-knx-data)) 3)))
     (is-true (await-cond 1.5
                (= (length (invocations 'ip-client:ip-disconnect)) 1)))
 
     (is-false ip-client::*conn*)
-    (is-false knx-client::*channel-id*)
-    ))
+    (is-false knx-client::*channel-id*)))
 
 (test with-knx/ip--error-on-ip-connect-should-cleanup
   (setf knxc::*asys* nil

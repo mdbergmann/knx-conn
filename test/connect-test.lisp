@@ -16,7 +16,7 @@
     (is (typep req 'knx-disconnect-request))
     (is (= (connect::disconnect-request-channel-id req) 0))
     (is (equalp (connect::disconnect-request-hpai req)
-                *hpai-unbound-addr*))
+                (make-hpai #(127 0 0 1) 123)))
     (is (= (header-body-len
             (connect::disconnect-request-header req)) 10))))
 
