@@ -400,15 +400,26 @@ In case of this the log must be checked."
 ;; tunneling request sending
 ;; --------------------------------------
 
-(test send-write-request--switch-on
-  (with-fixture env (nil nil)
-    (answer ip-client:ip-send-knx-data t)
+(test send-write-request--returns-future--resolves-with-ack
+  (with-fixture env (nil t)
+    (setf *receive-knx-data-recur-delay-secs* .1)
     (setf knx-client::*channel-id* 78)
-    (let ((req (send-write-request (make-group-address "0/4/10")
-                                   (make-dpt1 :switch :on))))
-      (is (= 78 (tunnelling-channel-id req))))
+    (answer ip-client:ip-send-knx-data t)
+    (answer ip-client:ip-receive-knx-data
+      `(,(make-tunnelling-ack-2 78 0) nil))
+    (destructuring-bind (ack _err)
+        (fawait
+         (send-write-request (make-group-address "0/4/10")
+                             (make-dpt1 :switch :on))
+         :timeout 1.0)
+      (declare (ignore _err))
+      (is (typep ack 'knx-tunnelling-ack))
+      (is (= 78 (tunnelling-channel-id ack)))
+      (is (= 0 (tunnelling-seq-counter ack))))
     (is-true (await-cond 1.5
-               (= 1 (length (invocations 'ip-client:ip-send-knx-data)))))))
+               (= (length (invocations 'ip-client:ip-send-knx-data)) 1)))
+    (is-true (await-cond 1.5
+               (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))))
 
 (test send-write-request--seq-counter--increment
   (with-fixture env (nil nil)

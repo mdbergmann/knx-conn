@@ -99,8 +99,9 @@ OK - revert back to single channel for simplicity
 OK - fix apci-gv-response parsing. is read as gv-read
 OK - with-knx/ip, bail out if no connection-response received
 OK - test for heartbeat in knx-client-test
-- make :wait-for-resp be more dynamic by providing a function that checks the response;
-allow sending L_Data.req wait for L_Data.con, etc.
+NO - make :wait-for-resp be more dynamic by providing a function that checks the response
+-> not doing: because awaiting the response-typpe is sufficient for this layer of communication.
+- sending L_Data.req wait for L_Data.con, etc.
 - register awaiting response before sending (!), or the response can be received before wait
 - allow a mapping from ga to dpt type for parsing.
 - remove use of *conn* and *local-host-and-port*

@@ -7,6 +7,7 @@
            #:tunnelling-request-cemi
            #:knx-tunnelling-ack
            #:make-tunnelling-ack
+           #:make-tunnelling-ack-2
            #:conn-header-channel-id
            #:conn-header-seq-counter
            #:tunnelling-cemi-message-code
@@ -154,3 +155,12 @@ KNXnet/IP body contains only conn-header, see above.")
      :header (make-header +knx-tunnelling-ack+
                           +conn-header-structure-len+)
      :conn-header request-conn-header)))
+
+(defun make-tunnelling-ack-2 (channel-id seq-counter)
+  (%make-tunnelling-ack
+   :header (make-header +knx-tunnelling-ack+
+                        +conn-header-structure-len+)
+   :conn-header (%make-connection-header
+                 :channel-id channel-id
+                 :seq-counter seq-counter)))
+
