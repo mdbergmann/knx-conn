@@ -54,11 +54,21 @@
 ;; configuration
 ;; ---------------------------------
 
-(defparameter *resp-wait-timeout-secs* 3
+;; response timeouts
+
+(defparameter *default-response-wait-timeout-secs* 3
+  "Default timeout for waiting for a response.")
+
+(defconstant +tunnel-ack-wait-timeout-secs+ 1
+  "Timeout for waiting for a tunnelling ack response.")
+
+(defconstant +heartbeat-resp-wait-timeout-secs+ 10
+  "Timeout for waiting for a heartbeat response.")
+
+(defparameter *resp-wait-timeout-secs* *default-response-wait-timeout-secs*
   "Timeout for waiting for a response.")
 
-(defparameter *heartbeat-resp-wait-timeout-secs* 10
-  "Timeout for waiting for a heartbeat response.")
+;; recur delay -- private
 
 (defparameter *default-receive-knx-data-recur-delay-secs* 0
   "Default delay in seconds for the recurring retrieval of KNX data.
@@ -68,6 +78,8 @@ The default is 0 because there should be no delay.")
   *default-receive-knx-data-recur-delay-secs*
   "Defines a delay in seconds for the recurring retrieval of KNX data.
 Only applicable if `start-receive` is true in `knx-conn-init`.")
+
+;; heartbeat
 
 (defconstant +default-heartbeat-interval-secs+ 60
   "Default interval in seconds for sending a connection-state request to the KNXnet/IP gateway.")
@@ -241,7 +253,7 @@ If the connection is established successfully, the channel-id will be stored in 
     fut))
 
 (defun tunnel-connection-established-p ()
-  "Returns true if a tunnel connection is established."
+  "Returns `T' if a tunnel connection is established."
   (integerp *channel-id*))
 
 ;; ---------------------------------
@@ -289,7 +301,14 @@ Returns the request that was sent."
 ;; async-handler
 ;; ---------------------------------
 
-(defun async-handler-receive (msg)
+(defun %doasync (dispatcher fun &optional (completed-fun nil))
+  (tasks:with-context ((act:context *async-handler*) dispatcher)
+    (if completed-fun
+        (tasks:task-async fun
+                          :on-complete-fun completed-fun)
+        (tasks:task-start fun))))
+
+(defun %async-handler-receive (msg)
   "Allows the following messages:
 
 - `(:send . <request>)` to send an knx request to the gateway.
@@ -302,22 +321,16 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
 - `(:rem-tunnel-req-listener . <listener-fun>)` to remove a listener function for tunnelling requests.
 - `(:clr-tunnel-req-listeners . nil)` to clear all listener functions for tunnelling requests."
   (destructuring-bind (msg-sym . args) msg
-    (log:trace "Async-handler received msg: ~a" msg-sym)
+    (log:trace "async-handler received msg: ~a" msg-sym)
     (let ((self act:*self*)
           (sender act:*sender*))
       (labels ((timeout-elapsed-p (start-time resp-wait-time)
                  (> (get-universal-time)
                     (+ resp-wait-time start-time)))
-               (doasync (dispatcher fun &optional (completed-fun nil))
-                 (tasks:with-context ((act:context *async-handler*) dispatcher)
-                   (if completed-fun
-                       (tasks:task-async fun
-                                         :on-complete-fun completed-fun)
-                       (tasks:task-start fun))))
                (wait-and-call-again (resp-type start-time resp-wait-time)
-                 (doasync :waiter
+                 (%doasync :waiter
                           (lambda ()
-                            (sleep 0.2)
+                            (sleep 0.2) ;deliberate wait or the loop will be too fast
                             (! self `(:wait-on-resp
                                       . (,resp-type ,start-time ,resp-wait-time))
                                sender)))))
@@ -326,7 +339,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
            (ip-send-knx-data args))
 
           (:receive
-           (doasync :receiver
+           (%doasync :receiver
                     (lambda ()
                       (prog1
                           (handler-case
@@ -335,6 +348,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                               (ip-receive-knx-data)
                             (error (c)
                               (log:warn "Error on receiving: ~a" c)))
+                        ;; in tests only to slow down the loop
                         (sleep *receive-knx-data-recur-delay-secs*)
                         (when (ip-connected-p)
                           (! self `(:receive . nil)))))
@@ -405,7 +419,7 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                                       "Timeout waiting for response of type ~a"
                                       resp-type))))
                (remhash resp-type *awaited-things*)
-               (return-from async-handler-receive))
+               (return-from %async-handler-receive))
              (log:trace "Checking for response of type: ~a" resp-type)
              (let ((thing (gethash resp-type *awaited-things*)))
                (if (not (eq thing 'awaiting))
@@ -414,13 +428,13 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                      (reply thing)
                      (remhash resp-type *awaited-things*))
                    (progn
-                     (log:trace "Thing not received yet")
+                     (log:trace "Awaited thing not received yet")
                      (wait-and-call-again resp-type start-time resp-wait-time))))))
 
           (:heartbeat
            ;; extended wait timeout according to spec
            (let ((*resp-wait-timeout-secs*
-                   *heartbeat-resp-wait-timeout-secs*))
+                   +heartbeat-resp-wait-timeout-secs+))
              (send-connection-state)))
 
           (:add-tunnel-req-listener
@@ -441,4 +455,4 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                          actor-context
                          :name "KNX async handler"
                          :receive (lambda (msg)
-                                    (async-handler-receive msg)))))
+                                    (%async-handler-receive msg)))))
