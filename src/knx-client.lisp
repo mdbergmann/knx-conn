@@ -352,17 +352,26 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
            (destructuring-bind (received err) args
              (declare (ignore err))
              (let ((received-type (type-of received)))
+               (log:info "Received: ~a" received-type)
                (typecase received
                  (knx-tunnelling-request
                   (let ((msc (tunnelling-cemi-message-code received)))
                     (! self `(:send . ,(make-tunnelling-ack received)))
-                    (log:info "Received tunnelling request with msg-code: ~a"
+                    (log:debug "Tunnelling request, msg-code: ~a"
                               (cemi-mc-l_data-rep msc))
                     (cond
                       ((eql msc +cemi-mc-l_data.ind+)
-                       (log:info "Received tunnelling indication."))
+                       (progn
+                         (let* ((cemi (tunnelling-request-cemi received))
+                                (addr-src (cemi-source-addr cemi))
+                                (addr-src-string (address-string-rep addr-src))
+                                (ga-dest (cemi-destination-addr cemi))
+                                (ga-dest-string (address-string-rep ga-dest))
+                                (dpt (cemi-data cemi)))
+                           (log:info "Tunnelling ind: ~a -> ~a = ~a"
+                                     addr-src-string ga-dest-string dpt))))
                       ((eql msc +cemi-mc-l_data.con+)
-                       (log:info "Received tunnelling confirmation.")))
+                       (log:debug "Tunnelling confirmation.")))
                     (progn
                       (log:debug "Notifying listeners of generic L_Data request...")
                       (dolist (listener-fun *tunnel-request-listeners*)
@@ -370,16 +379,13 @@ For `knx-tunnelling-request`s the registered listener functions will be called. 
                          (funcall listener-fun received))))))
                  (knx-tunnelling-ack
                   (progn
-                    (log:info "Received tunnelling ack: ~a" received)))
+                    (log:debug "Received tunnelling ack: ~a" received)))
                  (knx-disconnect-request
                   (progn
-                    (log:info "Received ip-disconnect request.")
                     (setf *channel-id* nil)
                     (setf *seq-counter* 0)))
                  (knx-connect-response
-                  (log:info "Received connect response: ~a" received))
-                 (t
-                  (log:debug "Received unspecified request: ~a" received-type)))
+                  (log:debug "Received connect response: ~a" received)))
                (if (null (gethash received-type *awaited-things*))
                    (log:debug "Discarding received: ~a" received-type)
                    (progn

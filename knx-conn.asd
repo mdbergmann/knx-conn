@@ -99,11 +99,11 @@ OK - revert back to single channel for simplicity
 OK - fix apci-gv-response parsing. is read as gv-read
 OK - with-knx/ip, bail out if no connection-response received
 OK - test for heartbeat in knx-client-test
-- remove use of *conn* and *local-host-and-port*
 - make :wait-for-resp be more dynamic by providing a function that checks the response
 allow sending L_Data.req wait for L_Data.con, etc.
-- register awaiting response before sending (!), or the response can be received before wait is called
-ect-request.
+- register awaiting response before sending (!), or the response can be received before wait
+- allow a mapping from ga to dpt type for parsing.
+- remove use of *conn* and *local-host-and-port*
 - wait for tunnel-ack before allowing next tunnel-request
 - tunnel-ack should arrive in 1 second
 - connstate (heartbeat): check for 3 failed requests
@@ -111,6 +111,7 @@ ect-request.
 - allow hooks to be registered for value updates on certain group-addresses
 - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (Datum)
 - dpt1, more on/off options like (t / nil)
+- check why usocket-receive blocking needs so many CPU cycles (check running from repl)
 - make nice DSL for the supported dpt types
 
 (write-value "0/0/4" 'dpt:dpt-1.001 nil :sync t)

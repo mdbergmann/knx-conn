@@ -153,11 +153,11 @@
     (is (equalp #(0) (cemi-data cut)))))
 
 (test parse-raw-to-bytes-and-parse-again
-  (let* ((cut (parse-cemi *l-data*))
+  (let* ((cut (parse-cemi *l-data.ind-gv-write*))
          (cut-bytes (knxobj:to-byte-seq cut)))
-    (print *l-data*)
+    (print *l-data.ind-gv-write*)
     (print cut-bytes)
-    (is (equalp *l-data* cut-bytes))
+    (is (equalp *l-data.ind-gv-write* cut-bytes))
     (is (= (cemi-len cut) (length cut-bytes)))
     (let ((parsed-cut (parse-cemi cut-bytes)))
       (print cut)
