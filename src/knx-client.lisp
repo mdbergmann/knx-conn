@@ -21,7 +21,7 @@
            ;; shared vars
            #:*receive-knx-data-recur-delay-secs*
            #:*default-receive-knx-data-recur-delay-secs*
-           #:*resp-wait-timeout-secs*
+           #:*default-response-wait-timeout-secs*
            #:reset-vars
            ;; async handler
            #:*async-handler*
@@ -64,9 +64,6 @@
 
 (defconstant +heartbeat-resp-wait-timeout-secs+ 10
   "Timeout for waiting for a heartbeat response.")
-
-(defparameter *resp-wait-timeout-secs* *default-response-wait-timeout-secs*
-  "Timeout for waiting for a response.")
 
 ;; recur delay -- private
 
@@ -177,7 +174,7 @@ The error condition will be of type `knx-receive-error` and reflects just an err
   (? *async-handler* `(:wait-on-resp
                        . (knx-descr-response
                           ,(get-universal-time)
-                          ,*resp-wait-timeout-secs*))))
+                          ,*default-response-wait-timeout-secs*))))
 
 (defun send-connection-state ()
   "Sends a connection-state request to the KNXnet/IP gateway. The response to this request will be received asynchronously.
@@ -191,7 +188,7 @@ This request should be sent every some seconds (i.e. 60) as a heart-beat to keep
   (? *async-handler* `(:wait-on-resp
                        . (knx-connstate-response
                           ,(get-universal-time)
-                          ,*resp-wait-timeout-secs*))))
+                          ,*default-response-wait-timeout-secs*))))
 
 (defun establish-tunnel-connection (&optional (enable-heartbeat t))
   "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
@@ -209,7 +206,7 @@ If the connection is established successfully, the channel-id will be stored in 
              `(:wait-on-resp
                . (knx-connect-response
                   ,(get-universal-time)
-                  ,*resp-wait-timeout-secs*)))))
+                  ,*default-response-wait-timeout-secs*)))))
     (%handle-response-fut
      fut
      (lambda (response)
@@ -240,7 +237,7 @@ If the connection is established successfully, the channel-id will be stored in 
              `(:wait-on-resp
                . (knx-disconnect-response
                   ,(get-universal-time)
-                  ,*resp-wait-timeout-secs*)))))
+                  ,*default-response-wait-timeout-secs*)))))
     (%handle-response-fut
      fut
      (lambda (response)
@@ -439,7 +436,7 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
 
           (:heartbeat
            ;; extended wait timeout according to spec
-           (let ((*resp-wait-timeout-secs*
+           (let ((*default-response-wait-timeout-secs*
                    +heartbeat-resp-wait-timeout-secs+))
              (send-connection-state)))
 
