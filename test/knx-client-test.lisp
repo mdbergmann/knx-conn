@@ -38,7 +38,7 @@
       (unwind-protect
            (progn
              (ip-client:ip-connect "foo-bar")
-             (reset-vars)
+             (reset-client-vars)
              ;; high value to not recur too much
              (setf *receive-knx-data-recur-delay-secs* .5)
              (make-async-handler test-asys)
@@ -545,7 +545,7 @@ In case of this the log must be checked."
     (let (responses ack1 ack2)
       (answer (ip-client:ip-send-knx-data req)
         (setf responses
-              (nconc responses (list (make-tunnelling-ack req)))))
+              (append responses (list (make-tunnelling-ack req)))))
       (answer ip-client:ip-receive-knx-data
         (when responses
           (let ((resp (pop responses)))

@@ -24,7 +24,7 @@
            #:*receive-knx-data-recur-delay-secs*
            #:*default-receive-knx-data-recur-delay-secs*
            #:*response-wait-timeout-secs*
-           #:reset-vars
+           #:reset-client-vars
            ;; async handler
            #:*async-handler*
            #:async-handler-receive
@@ -46,11 +46,13 @@
 
 (define-condition knx-receive-error (simple-error) ()
   (:report (lambda (c s)
-             (format s "KNX receive error: ~a" (simple-condition-format-control c)))))
+             (format s "KNX receive error: ~a"
+                     (simple-condition-format-control c)))))
 
 (define-condition knx-response-timeout-error (simple-error) ()
   (:report (lambda (c s)
-             (format s "KNX timeout error: ~a" (simple-condition-format-control c)))))
+             (format s "KNX timeout error: ~a"
+                     (simple-condition-format-control c)))))
 
 ;; ---------------------------------
 ;; configuration
@@ -114,7 +116,7 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 
 ;; ----------- helper functions ------------
 
-(defun reset-vars ()
+(defun reset-client-vars ()
   (setf *receive-knx-data-recur-delay-secs*
         *default-receive-knx-data-recur-delay-secs*)
   (setf *heartbeat-interval-secs*

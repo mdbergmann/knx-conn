@@ -106,9 +106,8 @@ OK - test with ack timeout in knx-client
 OK - resend tunnel-req once if no ack received within timeout
 OK - tunnel-ack should arrive in 1 second, though we can be more forgiving.
 OK - wait for tunnel-ack before allowing next tunnel-request
-- map the ack for 'write-value' in knx-connect to just `T`, or error condition, but hide the ack.
+=> - map the ack for 'write-value' in knx-connect to just `T`, or error condition, but hide the ack.
 - sending L_Data.req wait for L_Data.con, etc.
-- register awaiting response before sending (!), or the response can be received before wait
 - allow a mapping from ga to dpt type for parsing.
 - remove use of *conn* and *local-host-and-port*
 - connstate (heartbeat): check for 3 failed requests
@@ -118,6 +117,7 @@ OK - wait for tunnel-ack before allowing next tunnel-request
 - dpt1, more on/off options like (t / nil)
 - check why usocket-receive blocking needs so many CPU cycles (check running from repl)
 - make nice DSL for the supported dpt types
+? - register awaiting response before sending (!), or the response can be received before wait
 
 (write-value "0/0/4" 'dpt:dpt-1.001 nil :sync t)
 #(6 16 4 32 0 22 4 73 3 0 17 0 188 224 0 0 0 4 2 0 128 0)

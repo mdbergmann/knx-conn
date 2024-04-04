@@ -49,7 +49,7 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
   (unless (ip-connect host port)
     (error "Could not connect to KNX/IP"))
   (%ensure-asys)
-  (reset-vars)
+  (reset-client-vars)
   (unless *async-handler*
     (log:info "Creating async-handler...")
     (make-async-handler *asys*))
@@ -66,16 +66,17 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
 (defun knx-conn-destroy ()
   "Close the KNX connection and destroy the internal structures."
   (log:info "Destroying KNX...")
-  (ignore-errors
-   (fawait (close-tunnel-connection) :timeout 5))
   (when *async-handler*
     (clr-tunnelling-request-listeners))
   (ignore-errors
-   (ip-disconnect)
-   (%shutdown-asys))
+   (fawait (close-tunnel-connection) :timeout 5))
+  (ignore-errors
+    (ip-disconnect))
+  (ignore-errors
+    (%shutdown-asys))
   (when *async-handler*
     (setf *async-handler* nil))
-  (reset-vars))
+  (reset-client-vars))
 
 ;; ---------------------------------
 ;; convenience functions and macro DSL
