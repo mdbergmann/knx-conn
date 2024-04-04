@@ -262,7 +262,7 @@ If the connection is established successfully, the channel-id will be stored in 
 
 (defun send-write-request (group-address dpt)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
-Returns a `fcomputation:future` that is resolved when the tunnelling-ack is received."
+Returns a `fcomputation:future` that is resolved with the tunnelling-ack when received."
   (check-type group-address knx-group-address)
   (check-type dpt dpt)
   (%assert-channel-id)
@@ -282,7 +282,7 @@ Returns a `fcomputation:future` that is resolved when the tunnelling-ack is rece
 
 (defun send-read-request (group-address)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously.
-Returns the request that was sent."
+Returns a `fcomputation:future` that is resolved with the tunnelling-ack when received."
   (check-type group-address knx-group-address)
   (%assert-channel-id)
   (let ((req (make-tunnelling-request
@@ -294,7 +294,10 @@ Returns the request that was sent."
                      :apci (make-apci-gv-read)
                      :dpt nil))))
     (! *async-handler* `(:send . ,req))
-    req))
+    (? *async-handler* `(:wait-on-resp
+                         . (knx-tunnelling-ack
+                            ,(get-universal-time)
+                            ,+tunnel-ack-wait-timeout-secs+)))))
 
 ;; ---------------------------------
 ;; async-handler

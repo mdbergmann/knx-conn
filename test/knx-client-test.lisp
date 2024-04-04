@@ -464,13 +464,22 @@ In case of this the log must be checked."
       (is (= (second seq-counters) 254))
       (is (= (first seq-counters) 0)))))
 
-(test send-read-request
-  (with-fixture env (nil nil)
-    (answer ip-client:ip-send-knx-data t)
+(test send-read-request--returns-future--resolves-with-ack
+  (with-fixture env (nil t)
+    (setf *receive-knx-data-recur-delay-secs* .1)
     (setf knx-client::*channel-id* 78)
-    (setf knx-client::*seq-counter* 79)
-    (let ((req (send-read-request (make-group-address "0/4/10"))))
-      (is (= 78 (tunnelling-channel-id req)))
-      (is (= 79 (tunnelling-seq-counter req))))
+    (answer ip-client:ip-send-knx-data t)
+    (answer ip-client:ip-receive-knx-data
+      `(,(make-tunnelling-ack-2 78 0) nil))
+    (destructuring-bind (ack _err)
+        (fawait
+         (send-read-request (make-group-address "0/4/10"))
+         :timeout 1.0)
+      (declare (ignore _err))
+      (is (typep ack 'knx-tunnelling-ack))
+      (is (= 78 (tunnelling-channel-id ack)))
+      (is (= 0 (tunnelling-seq-counter ack))))
     (is-true (await-cond 1.5
-               (= 1 (length (invocations 'ip-client:ip-send-knx-data)))))))
+               (= (length (invocations 'ip-client:ip-send-knx-data)) 1)))
+    (is-true (await-cond 1.5
+               (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))))
