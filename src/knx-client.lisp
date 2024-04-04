@@ -7,6 +7,8 @@
                 #:!
                 #:?
                 #:reply)
+  (:import-from #:timeutils
+                #:wait-cond)
   (:export #:retrieve-descr-info
            #:establish-tunnel-connection
            #:close-tunnel-connection
@@ -116,7 +118,11 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
   (setf *receive-knx-data-recur-delay-secs*
         *default-receive-knx-data-recur-delay-secs*)
   (setf *heartbeat-interval-secs*
-        +default-heartbeat-interval-secs+))
+        +default-heartbeat-interval-secs+)
+  (setf *response-wait-timeout-secs*
+        *default-response-wait-timeout-secs*)
+  (setf *awaited-things*
+        (make-hash-table :test #'eq)))
 
 (defun %assert-channel-id ()
   (assert (integerp *channel-id*)
@@ -160,6 +166,16 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 ;; knx-ip protocol functions
 ;; ---------------------------------
 
+(defun %send-req (req)
+  (! *async-handler* `(:send . ,req)))
+
+(defun %receive-resp (resp-type &optional (resp-wait-time
+                                           *response-wait-timeout-secs*))
+  (? *async-handler* `(:wait-on-resp
+                       . (,resp-type
+                          ,(get-universal-time)
+                          ,resp-wait-time))))
+
 (defun %handle-response-fut (fut handle-fun)
   (fcompleted fut
       (result)
@@ -175,26 +191,18 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 Returns a future. The result will be a list of the received response and an error condition, if any.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol."
   (log:info "Retrieving description information...")
-  (! *async-handler* `(:send
-                       . ,(make-descr-request *hpai-unbound-addr*)))
-  (? *async-handler* `(:wait-on-resp
-                       . (knx-descr-response
-                          ,(get-universal-time)
-                          ,*response-wait-timeout-secs*))))
+  (%send-req (make-descr-request *hpai-unbound-addr*))
+  (%receive-resp 'knx-descr-response))
 
 (defun send-connection-state ()
   "Sends a connection-state request to the KNXnet/IP gateway. The response to this request will be received asynchronously.
 Returns the request that was sent.
 This request should be sent every some seconds (i.e. 60) as a heart-beat to keep the connection alive."
   (%assert-channel-id)
-  (! *async-handler* `(:send
-                       . ,(make-connstate-request
-                           *channel-id*
-                           ip-client:*local-host-and-port*)))
-  (? *async-handler* `(:wait-on-resp
-                       . (knx-connstate-response
-                          ,(get-universal-time)
-                          ,*response-wait-timeout-secs*))))
+  (%send-req (make-connstate-request
+              *channel-id*
+              ip-client:*local-host-and-port*))
+  (%receive-resp 'knx-connstate-response))
 
 (defun establish-tunnel-connection (&optional (enable-heartbeat t))
   "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
@@ -203,57 +211,41 @@ The error condition will be of type `knx-receive-error` and reflects just an err
 
 If the connection is established successfully, the channel-id will be stored in the global variable `*channel-id*`."
   (log:info "Establishing tunnel connection...")
-  (! *async-handler* `(:send
-                       . ,(make-connect-request
-                           ip-client:*local-host-and-port*
-                           ip-client:*local-host-and-port*)))
-  (let ((fut
-          (? *async-handler*
-             `(:wait-on-resp
-               . (knx-connect-response
-                  ,(get-universal-time)
-                  ,*response-wait-timeout-secs*)))))
-    (%handle-response-fut
-     fut
-     (lambda (response)
-       (let ((status (connect-response-status response)))
-         (if (not (eql status 0))
-             (log:warn "Tunnel connection failed, status: ~a" status)
-             (progn
-               (log:info "Tunnel connection established.")
-               (log:info "Channel-id: ~a" (connect-response-channel-id response))
-               (setf *channel-id*
-                     (connect-response-channel-id response))
-               (setf *seq-counter* 0)
-               (when enable-heartbeat
-                 (log:info "Starting heartbeat...")
-                 (%start-heartbeat)))))))
-    fut))
+  (%send-req (make-connect-request
+              ip-client:*local-host-and-port*
+              ip-client:*local-host-and-port*))
+  (%handle-response-fut
+   (%receive-resp 'knx-connect-response)
+   (lambda (response)
+     (let ((status (connect-response-status response)))
+       (if (not (eql status 0))
+           (log:warn "Tunnel connection failed, status: ~a" status)
+           (progn
+             (log:info "Tunnel connection established.")
+             (log:info "Channel-id: ~a" (connect-response-channel-id response))
+             (setf *channel-id*
+                   (connect-response-channel-id response))
+             (setf *seq-counter* 0)
+             (when enable-heartbeat
+               (log:info "Starting heartbeat...")
+               (%start-heartbeat))))))))
 
 (defun close-tunnel-connection ()
   (%assert-channel-id)
   (%stop-heartbeat)
   (log:info "Closing tunnel connection...")
-  (! *async-handler* `(:send
-                       . ,(make-disconnect-request
-                           *channel-id*
-                           ip-client:*local-host-and-port*)))
-  (let ((fut
-          (? *async-handler*
-             `(:wait-on-resp
-               . (knx-disconnect-response
-                  ,(get-universal-time)
-                  ,*response-wait-timeout-secs*)))))
-    (%handle-response-fut
-     fut
-     (lambda (response)
-       (let ((status (disconnect-response-status response)))
-         (if (not (eql status 0))
-             (log:warn "Tunnel disconnection failed, status: ~a" status)
-             (progn
-               (log:info "Tunnel connection closed.")
-               (setf *channel-id* nil))))))
-    fut))
+  (%send-req (make-disconnect-request
+              *channel-id*
+              ip-client:*local-host-and-port*))
+  (%handle-response-fut
+   (%receive-resp 'knx-disconnect-response)
+   (lambda (response)
+     (let ((status (disconnect-response-status response)))
+       (if (not (eql status 0))
+           (log:warn "Tunnel disconnection failed, status: ~a" status)
+           (progn
+             (log:info "Tunnel connection closed.")
+             (setf *channel-id* nil)))))))
 
 (defun tunnel-connection-established-p ()
   "Returns `T' if a tunnel connection is established."
@@ -265,25 +257,27 @@ If the connection is established successfully, the channel-id will be stored in 
 
 (defun %send-tunnel-request (req)
   "Sends given tunnel request and waits for tunnel-ack, resends request once if first ack doesn't come in time."
+  (log:trace "Checking on no awaited ACK...")
+  (unless (wait-cond
+           (lambda ()
+             (null (gethash 'knx-tunnelling-ack *awaited-things*)))
+           0.05 5) ;; wait for max 5 seconds => too long
+    (log:warn "Unable to send request, ACK still being awaited!")
+    (return-from %send-tunnel-request))
+  
+  (log:trace "Check OK, go on...")
   (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
-    (flet ((send-req ()
-             (! *async-handler* `(:send . ,req)))
-           (receive-ack ()
-             (? *async-handler* `(:wait-on-resp
-                                  . (knx-tunnelling-ack
-                                     ,(get-universal-time)
-                                     ,ack-timeout)))))
-      (send-req)
-      (fmap (receive-ack)
-          (result)
-        (destructuring-bind (resp err) result
-          (declare (ignore resp))
-          (if (and err (typep err 'knx-response-timeout-error))
-              (progn
-                (log:debug "Received no ACK in time, resending request.")
-                (send-req)
-                (receive-ack))
-              result))))))
+    (%send-req req)
+    (fmap (%receive-resp 'knx-tunnelling-ack ack-timeout)
+        (result)
+      (destructuring-bind (resp err) result
+        (declare (ignore resp))
+        (if (and err (typep err 'knx-response-timeout-error))
+            (progn
+              (log:debug "Received no ACK in time, resending request.")
+              (%send-req req)
+              (%receive-resp 'knx-tunnelling-ack ack-timeout))
+            result)))))
 
 (defun send-write-request (group-address dpt)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
@@ -347,6 +341,7 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
           (sender act:*sender*))
       (labels ((timeout-elapsed-p (start-time resp-wait-time)
                  (let ((now (get-universal-time))
+                       ;; `resp-wait-time', if float will cause problems in the comparison here
                        (end-time (+ (truncate resp-wait-time) start-time)))
                    (> now end-time)))
                (wait-and-call-again (resp-type start-time resp-wait-time)

@@ -49,6 +49,7 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
   (unless (ip-connect host port)
     (error "Could not connect to KNX/IP"))
   (%ensure-asys)
+  (reset-vars)
   (unless *async-handler*
     (log:info "Creating async-handler...")
     (make-async-handler *asys*))

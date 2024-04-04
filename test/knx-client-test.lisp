@@ -28,8 +28,6 @@
                       (:shared (:workers 2)
                        :receiver (:workers 1)
                        :waiter (:workers 1))))))
-    ;; high value to not recur too much
-    (setf *receive-knx-data-recur-delay-secs* .5)
     (with-mocks ()
       (answer ip-client:ip-connect
         (progn
@@ -40,6 +38,9 @@
       (unwind-protect
            (progn
              (ip-client:ip-connect "foo-bar")
+             (reset-vars)
+             ;; high value to not recur too much
+             (setf *receive-knx-data-recur-delay-secs* .5)
              (make-async-handler test-asys)
              (when start-receive
                (start-async-receive))
@@ -534,3 +535,33 @@ In case of this the log must be checked."
           (is (null err))))
       (is-true (await-cond 5.0
                  (= (length (invocations 'ip-client:ip-send-knx-data)) 2))))))
+
+(test send-tunnel-request--wait-for-ack--when-sending-new-request
+  "As per KNX-IP spec, it is not allowed to send a new request before the
+   previous one has not been acknowledged."
+  (with-fixture env (nil t)
+    (setf *receive-knx-data-recur-delay-secs* .2)
+    (setf knx-client::*channel-id* 78)
+    (let (responses ack1 ack2)
+      (answer (ip-client:ip-send-knx-data req)
+        (setf responses
+              (nconc responses (list (make-tunnelling-ack req)))))
+      (answer ip-client:ip-receive-knx-data
+        (when responses
+          (let ((resp (pop responses)))
+            `(,resp nil))))
+      (fcompleted
+          (send-read-request (make-group-address "0/4/10"))
+          (result)
+        (setf ack1 result))
+      (sleep 0.05)
+      (fcompleted
+          (send-read-request (make-group-address "0/4/10"))
+          (result)
+        (setf ack2 result))
+      (is-true (await-cond 1.5
+                 (and (not (null ack1))
+                      (= 0 (tunnelling-seq-counter (car ack1))))))
+      (is-true (await-cond 1.5
+                 (and (not (null ack2))
+                      (= 1 (tunnelling-seq-counter (car ack2)))))))))

@@ -104,13 +104,13 @@ NO - make :wait-for-resp be more dynamic by providing a function that checks the
 OK - implement proper tunneling-ack handling
 OK - test with ack timeout in knx-client
 OK - resend tunnel-req once if no ack received within timeout
+OK - tunnel-ack should arrive in 1 second, though we can be more forgiving.
+OK - wait for tunnel-ack before allowing next tunnel-request
 - map the ack for 'write-value' in knx-connect to just `T`, or error condition, but hide the ack.
 - sending L_Data.req wait for L_Data.con, etc.
 - register awaiting response before sending (!), or the response can be received before wait
 - allow a mapping from ga to dpt type for parsing.
 - remove use of *conn* and *local-host-and-port*
-- wait for tunnel-ack before allowing next tunnel-request
-- tunnel-ack should arrive in 1 second, though we can be more forgiving.
 - connstate (heartbeat): check for 3 failed requests
 - extract receive-handlers to separate functions.
 - allow hooks to be registered for value updates on certain group-addresses
