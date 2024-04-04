@@ -464,7 +464,7 @@ In case of this the log must be checked."
       (is (= (second seq-counters) 254))
       (is (= (first seq-counters) 0)))))
 
-(test send-write-request--returns-future--ack-timeout
+(test send-write-request--ack-timeout
   (with-fixture env (nil t)
     (setf knx-client::*channel-id* 78)
     (answer ip-client:ip-send-knx-data t)
@@ -480,7 +480,7 @@ In case of this the log must be checked."
         (is (null ack))
         (is (typep err 'knx-response-timeout-error))))))
 
-(test send-read-request--returns-future--resolves-with-ack
+(test send-read-request--resolves-with-ack
   (with-fixture env (nil t)
     (setf *receive-knx-data-recur-delay-secs* .1)
     (setf knx-client::*channel-id* 78)
@@ -500,7 +500,7 @@ In case of this the log must be checked."
     (is-true (await-cond 1.5
                (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))))
 
-(test send-read-request--returns-future--ack-timeout
+(test send-read-request--ack-timeout
   (with-fixture env (nil t)
     (setf knx-client::*channel-id* 78)
     (answer ip-client:ip-send-knx-data t)
@@ -514,3 +514,23 @@ In case of this the log must be checked."
            :timeout 2.0)
         (is (null ack))
         (is (typep err 'knx-response-timeout-error))))))
+
+(test send-read-request--ack-timeout--send-second-request--ok
+  (with-fixture env (nil t)
+    (setf knx-client::*channel-id* 78)
+    (let ((send-count 0))
+      (answer ip-client:ip-send-knx-data
+        (incf send-count))
+      (answer ip-client:ip-receive-knx-data
+        (cond
+          ((= send-count 1) (progn (sleep 0.7) nil))
+          ((= send-count 2) `(,(make-tunnelling-ack-2 78 0) nil))))
+      (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1.0))
+        (destructuring-bind (ack err)
+            (fawait
+             (send-read-request (make-group-address "0/4/10"))
+             :timeout 5.0)
+          (is (typep ack 'knx-tunnelling-ack))
+          (is (null err))))
+      (is-true (await-cond 5.0
+                 (= (length (invocations 'ip-client:ip-send-knx-data)) 2))))))

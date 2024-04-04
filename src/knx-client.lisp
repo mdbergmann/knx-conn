@@ -57,16 +57,19 @@
 ;; response timeouts
 
 (defparameter *default-response-wait-timeout-secs* 3
-  "Default timeout for waiting for a response.")
+  "Default timeout for waiting for a response.
+Times must be in full seconds. Float values will be truncated.")
 
 (defparameter *tunnel-ack-wait-timeout-secs* 2
-  "Timeout for waiting for a tunnelling ack response. Should be 1, we set 2")
+  "Timeout for waiting for a tunnelling ack response. Should be 1, we set 2
+Times must be in full seconds. Float values will be truncated.")
 
 (defconstant +heartbeat-resp-wait-timeout-secs+ 10
   "Timeout for waiting for a heartbeat response.")
 
 (defparameter *response-wait-timeout-secs* *default-response-wait-timeout-secs*
-  "Timeout for waiting for a response.")
+  "Timeout for waiting for a response.
+Times must be in full seconds. Float values will be truncated.")
 
 ;; recur delay -- private
 
@@ -260,6 +263,28 @@ If the connection is established successfully, the channel-id will be stored in 
 ;; tunnelling-request functions
 ;; ---------------------------------
 
+(defun %send-tunnel-request (req)
+  "Sends given tunnel request and waits for tunnel-ack, resends request once if first ack doesn't come in time."
+  (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
+    (flet ((send-req ()
+             (! *async-handler* `(:send . ,req)))
+           (receive-ack ()
+             (? *async-handler* `(:wait-on-resp
+                                  . (knx-tunnelling-ack
+                                     ,(get-universal-time)
+                                     ,ack-timeout)))))
+      (send-req)
+      (fmap (receive-ack)
+          (result)
+        (destructuring-bind (resp err) result
+          (declare (ignore resp))
+          (if (and err (typep err 'knx-response-timeout-error))
+              (progn
+                (log:debug "Received no ACK in time, resending request.")
+                (send-req)
+                (receive-ack))
+              result))))))
+
 (defun send-write-request (group-address dpt)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
 Returns a `fcomputation:future` that is resolved with the tunnelling-ack when received."
@@ -274,11 +299,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
                      :dest-address group-address
                      :apci (make-apci-gv-write)
                      :dpt dpt))))
-    (! *async-handler* `(:send . ,req))
-    (? *async-handler* `(:wait-on-resp
-                         . (knx-tunnelling-ack
-                            ,(get-universal-time)
-                            ,*tunnel-ack-wait-timeout-secs*)))))
+    (%send-tunnel-request req)))
 
 (defun send-read-request (group-address)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously.
@@ -293,11 +314,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
                      :dest-address group-address
                      :apci (make-apci-gv-read)
                      :dpt nil))))
-    (! *async-handler* `(:send . ,req))
-    (? *async-handler* `(:wait-on-resp
-                         . (knx-tunnelling-ack
-                            ,(get-universal-time)
-                            ,*tunnel-ack-wait-timeout-secs*)))))
+    (%send-tunnel-request req)))
 
 ;; ---------------------------------
 ;; async-handler
@@ -329,8 +346,9 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
     (let ((self act:*self*)
           (sender act:*sender*))
       (labels ((timeout-elapsed-p (start-time resp-wait-time)
-                 (> (get-universal-time)
-                    (+ resp-wait-time start-time)))
+                 (let ((now (get-universal-time))
+                       (end-time (+ (truncate resp-wait-time) start-time)))
+                   (> now end-time)))
                (wait-and-call-again (resp-type start-time resp-wait-time)
                  (%doasync :waiter
                           (lambda ()

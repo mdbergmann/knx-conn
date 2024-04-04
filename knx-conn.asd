@@ -103,8 +103,8 @@ NO - make :wait-for-resp be more dynamic by providing a function that checks the
 -> not doing: because awaiting the response-type is sufficient for this layer of communication.
 OK - implement proper tunneling-ack handling
 OK - test with ack timeout in knx-client
-=> - map the ack for 'write-value' in knx-connect to just `T`, or error condition, but hide the ack.
-- resend tunnel-req if no ack received within timeout
+OK - resend tunnel-req once if no ack received within timeout
+- map the ack for 'write-value' in knx-connect to just `T`, or error condition, but hide the ack.
 - sending L_Data.req wait for L_Data.con, etc.
 - register awaiting response before sending (!), or the response can be received before wait
 - allow a mapping from ga to dpt type for parsing.
