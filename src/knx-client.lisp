@@ -59,7 +59,7 @@
 (defparameter *default-response-wait-timeout-secs* 3
   "Default timeout for waiting for a response.")
 
-(defconstant +tunnel-ack-wait-timeout-secs+ 2
+(defparameter *tunnel-ack-wait-timeout-secs* 2
   "Timeout for waiting for a tunnelling ack response. Should be 1, we set 2")
 
 (defconstant +heartbeat-resp-wait-timeout-secs+ 10
@@ -278,7 +278,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
     (? *async-handler* `(:wait-on-resp
                          . (knx-tunnelling-ack
                             ,(get-universal-time)
-                            ,+tunnel-ack-wait-timeout-secs+)))))
+                            ,*tunnel-ack-wait-timeout-secs*)))))
 
 (defun send-read-request (group-address)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously.
@@ -297,7 +297,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
     (? *async-handler* `(:wait-on-resp
                          . (knx-tunnelling-ack
                             ,(get-universal-time)
-                            ,+tunnel-ack-wait-timeout-secs+)))))
+                            ,*tunnel-ack-wait-timeout-secs*)))))
 
 ;; ---------------------------------
 ;; async-handler
