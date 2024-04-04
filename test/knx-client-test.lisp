@@ -48,7 +48,8 @@
              (&body))
         (progn
           (clr-tunnelling-request-listeners)
-          (ac:shutdown test-asys :wait t)
+          (ignore-errors
+           (ac:shutdown test-asys :wait t))
           (setf *async-handler* nil)
           (setf *resp-wait-timeout-secs* resp-wait-timeout-store)
           (setf *receive-knx-data-recur-delay-secs* 0)
@@ -423,27 +424,45 @@ In case of this the log must be checked."
 
 (test send-write-request--seq-counter--increment
   (with-fixture env (nil nil)
-    (answer ip-client:ip-send-knx-data t)
     (setf knx-client::*channel-id* 78)
     (setf knx-client::*seq-counter* 0)
-    (let ((req1 (send-write-request (make-group-address "0/4/10")
-                                    (make-dpt1 :switch :on)))
-          (req2 (send-write-request (make-group-address "0/4/10")
-                                    (make-dpt1 :switch :on))))
-      (is (= 0 (tunnelling-seq-counter req1)))
-      (is (= 1 (tunnelling-seq-counter req2))))))
+    (let ((seq-counters nil))
+      ;; attention: we're mocking `act:!` here.
+      ;; but it is also used in the fixture cleanup-code, so we have to have
+      ;; `CALL-PREVIOUS` here to do that.
+      (answer (act:! _ msg)
+        (if (eq :send (car msg))
+            (push (tunnelling-seq-counter (cdr msg)) seq-counters)
+            (call-previous)))
+      (answer act:? (with-fut t))
+      (send-write-request (make-group-address "0/4/10")
+                          (make-dpt1 :switch :on))
+      (send-write-request (make-group-address "0/4/10")
+                          (make-dpt1 :switch :on))
+      (is (= (length seq-counters) 2))
+      (is (= (second seq-counters) 0))
+      (is (= (first seq-counters) 1)))))
 
 (test send-write-request--seq-counter--rollover
   (with-fixture env (nil nil)
-    (answer ip-client:ip-send-knx-data t)
     (setf knx-client::*channel-id* 78)
     (setf knx-client::*seq-counter* 254)
-    (let ((req1 (send-write-request (make-group-address "0/4/10")
-                                    (make-dpt1 :switch :on)))
-          (req2 (send-write-request (make-group-address "0/4/10")
-                                    (make-dpt1 :switch :on))))
-      (is (= 254 (tunnelling-seq-counter req1)))
-      (is (= 0 (tunnelling-seq-counter req2))))))
+    (let ((seq-counters nil))
+      ;; attention: we're mocking `act:!` here.
+      ;; but it is also used in the fixture cleanup-code, so we have to have
+      ;; `CALL-PREVIOUS` here to do that.
+      (answer (act:! _ msg)
+        (if (eq :send (car msg))
+            (push (tunnelling-seq-counter (cdr msg)) seq-counters)
+            (call-previous)))
+      (answer act:? (with-fut t))
+      (send-write-request (make-group-address "0/4/10")
+                          (make-dpt1 :switch :on))
+      (send-write-request (make-group-address "0/4/10")
+                          (make-dpt1 :switch :on))
+      (is (= (length seq-counters) 2))
+      (is (= (second seq-counters) 254))
+      (is (= (first seq-counters) 0)))))
 
 (test send-read-request
   (with-fixture env (nil nil)

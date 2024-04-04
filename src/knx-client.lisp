@@ -59,8 +59,8 @@
 (defparameter *default-response-wait-timeout-secs* 3
   "Default timeout for waiting for a response.")
 
-(defconstant +tunnel-ack-wait-timeout-secs+ 1
-  "Timeout for waiting for a tunnelling ack response.")
+(defconstant +tunnel-ack-wait-timeout-secs+ 2
+  "Timeout for waiting for a tunnelling ack response. Should be 1, we set 2")
 
 (defconstant +heartbeat-resp-wait-timeout-secs+ 10
   "Timeout for waiting for a heartbeat response.")
