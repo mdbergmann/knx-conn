@@ -20,7 +20,7 @@
 (def-fixture env (listener-fun start-receive)
   ;; store some variables to reset them after the test
   (let ((resp-wait-timeout-store
-          *resp-wait-timeout-secs*)
+          *response-wait-timeout-secs*)
         (channel-id
           knx-client::*channel-id*)
         (test-asys (asys:make-actor-system
@@ -51,7 +51,7 @@
           (ignore-errors
            (ac:shutdown test-asys :wait t))
           (setf *async-handler* nil)
-          (setf *resp-wait-timeout-secs* resp-wait-timeout-store)
+          (setf *response-wait-timeout-secs* resp-wait-timeout-store)
           (setf *receive-knx-data-recur-delay-secs* 0)
           (setf knx-client::*heartbeat-interval-secs*
                 knx-client::+default-heartbeat-interval-secs+)
@@ -114,7 +114,7 @@
     (answer ip-client:ip-receive-knx-data
       (progn
         (sleep 2.0) nil))
-    (setf *resp-wait-timeout-secs* 1)
+    (setf *response-wait-timeout-secs* 1)
     (let ((result-fut (retrieve-descr-info)))
       (sleep 2.0)
       (destructuring-bind (result err)
@@ -133,7 +133,7 @@ In case of this the log must be checked."
     (answer ip-client:ip-receive-knx-data
       `(nil ,(make-condition 'simple-error :format-control "foo")))
 
-    (setf *resp-wait-timeout-secs* 0)
+    (setf *response-wait-timeout-secs* 0)
     (let ((result-fut (retrieve-descr-info)))
       (destructuring-bind (result err)
           (fawait result-fut :timeout 2)
