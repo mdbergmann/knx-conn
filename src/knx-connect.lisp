@@ -83,12 +83,18 @@ It will make an UDP connection to KNX/IP gateway and establish a tunnelling conn
 ;; ---------------------------------
 
 (defun write-value (group-address dpt-type value)
-  "Write the given `value` to the `group-address` with the given `dpt-type`."
+  "Write the given `value` to the `group-address` with the given `dpt-type`.
+Returns `future:future` which resolves to `T' is all went well and error condition on error."
   (log:info "Writing value: ~a (~a) to ga: ~a" value dpt-type group-address)
-  (send-write-request (address:make-group-address group-address)
-                      (cond
-                        ((eq dpt-type 'dpt:dpt-1.001)
-                         (dpt:make-dpt1 dpt-type (if value :on :off))))))
+  (fmap
+      (send-write-request
+       (address:make-group-address group-address)
+       (cond
+         ((eq dpt-type 'dpt:dpt-1.001)
+          (dpt:make-dpt1 dpt-type (if value :on :off)))))
+      (result)
+    (destructuring-bind (resp err) result
+        (if resp t err))))
 
 (defmacro %make-listener-fun (requested-ga dpt-type)
   `(lambda (req)

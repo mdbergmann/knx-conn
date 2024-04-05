@@ -109,6 +109,7 @@ OK - wait for tunnel-ack before allowing next tunnel-request
 => - map the ack for 'write-value' in knx-connect to just `T`, or error condition, but hide the ack.
 - sending L_Data.req wait for L_Data.con, etc.
 - allow a mapping from ga to dpt type for parsing.
+- remote 'start-async-receive' flag, because it always needed to receive
 - remove use of *conn* and *local-host-and-port*
 - connstate (heartbeat): check for 3 failed requests
 - extract receive-handlers to separate functions.
