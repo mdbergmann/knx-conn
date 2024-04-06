@@ -88,10 +88,10 @@ Only applicable if `start-receive` is true in `knx-conn-init`.")
 
 ;; heartbeat
 
-(defconstant +default-heartbeat-interval-secs+ 60
+(defparameter *default-heartbeat-interval-secs* 60
   "Default interval in seconds for sending a connection-state request to the KNXnet/IP gateway.")
 
-(defparameter *heartbeat-interval-secs* +default-heartbeat-interval-secs+
+(defparameter *heartbeat-interval-secs* *default-heartbeat-interval-secs*
   "Interval in seconds for sending a connection-state request to the KNXnet/IP gateway.")
 
 ;; ---------------------------------
@@ -120,7 +120,7 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
   (setf *receive-knx-data-recur-delay-secs*
         *default-receive-knx-data-recur-delay-secs*)
   (setf *heartbeat-interval-secs*
-        +default-heartbeat-interval-secs+)
+        *default-heartbeat-interval-secs*)
   (setf *response-wait-timeout-secs*
         *default-response-wait-timeout-secs*)
   (setf *awaited-things*

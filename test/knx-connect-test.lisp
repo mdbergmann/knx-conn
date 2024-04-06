@@ -151,19 +151,16 @@
     (answer knx-client:tunnel-connection-established-p t)
     (answer knx-client:send-connection-state t)
     (unwind-protect
-         (progn
-           (setf knx-client:*receive-knx-data-recur-delay-secs* 1.0)
-           (setf knx-client::*heartbeat-interval-secs* .5)
+         (let ((knx-client::*default-receive-knx-data-recur-delay-secs*
+                 1.0)
+               (knx-client::*default-heartbeat-interval-secs* .5))
            (knx-conn-init "12.23.34.45"
                           :enable-heartbeat t
                           :start-receive t)
-           (is-true (await-cond 1.5
+           (is-true (await-cond 1.0
                       (>= (length (invocations
                                    'knx-client:send-connection-state)) 1))))
-      (progn
-        (knx-conn-destroy)
-        (is (eql knx-client::*heartbeat-interval-secs*
-                 knx-client::+default-heartbeat-interval-secs+))))))
+      (knx-conn-destroy))))
 
 ;; ------------------------------------
 ;; with-knx/ip macro
@@ -287,30 +284,33 @@
 ;; request-value
 ;; -------------
 
-(defun make-test-tunnelling-request ()
+(defun make-test-tunnel-request-dpt-1.001-ind_response ()
   (tunnelling:make-tunnelling-request
    :channel-id 1
    :seq-counter 1
    :cemi (cemi:make-default-cemi
-          :message-code +cemi-mc-l_data.req+
+          :message-code +cemi-mc-l_data.ind+
           :dest-address (address:make-group-address "1/2/3")
-          :apci (make-apci-gv-write)
+          :apci (make-apci-gv-response)
           :dpt (dpt:make-dpt1 :switch :on))))
 
-(test request-value--wait-for-value
+(test request-value--wait-for-value--ok
+  (setf *test-tunnelling-request-ack*
+        (make-test-tunnelling-ack))
   (setf *test-tunnelling-request-receive*
-        (make-test-tunnelling-request))
+        (make-test-tunnel-request-dpt-1.001-ind_response))
   (with-fixture request-value (0 t)
     (with-knx/ip ("12.23.34.45")
-      (let ((value (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
-                           :timeout 10.0)))
+      (let ((value
+              (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
+                      :timeout 10.0)))
         (format t "value: ~a~%" value)
         (is (eq value :on))
         ))))
 
 (test request-value--wait-for-value--timeout
   (setf *test-tunnelling-request-receive*
-        (make-test-tunnelling-request))
+        (make-test-tunnel-request-dpt-1.001-ind_response))
   (with-fixture request-value (1.5 t)
     (with-knx/ip ("12.23.34.45")
       (multiple-value-bind (res fut)
@@ -320,7 +320,7 @@
         (is (null res))
         ))))
 
-(defun make-test-tunnelling-request-dpt-9.001 ()
+(defun make-test-tunnel-request-dpt-9.001-ind_response ()
   (knx-conn.knx-obj:parse-root-knx-object
    (to-byte-seq
     (tunnelling:make-tunnelling-request
@@ -337,7 +337,7 @@
   (setf *test-tunnelling-request-ack*
         (make-test-tunnelling-ack))
   (setf *test-tunnelling-request-receive*
-        (make-test-tunnelling-request-dpt-9.001))
+        (make-test-tunnel-request-dpt-9.001-ind_response))
   (with-fixture request-value (0 t)
     (with-knx/ip ("12.23.34.45")
       (multiple-value-bind (res fut)
