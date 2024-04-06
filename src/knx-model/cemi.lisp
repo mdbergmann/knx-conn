@@ -47,6 +47,7 @@
            #:apci-equal-p
            #:make-apci-gv-write
            #:make-apci-gv-read
+           #:make-apci-gv-response
            ))
 
 (in-package :knx-conn.cemi)

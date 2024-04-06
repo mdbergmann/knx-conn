@@ -54,8 +54,6 @@
              (format s "KNX timeout error: ~a"
                      (simple-condition-format-control c)))))
 
-(knx-conn.tests:run!)
-
 ;; ---------------------------------
 ;; configuration
 ;; ---------------------------------

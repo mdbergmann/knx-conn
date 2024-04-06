@@ -107,6 +107,7 @@ OK - resend tunnel-req once if no ack received within timeout
 OK - tunnel-ack should arrive in 1 second, though we can be more forgiving.
 OK - wait for tunnel-ack before allowing next tunnel-request
 => - map the ack for 'write-value' in knx-connect to just `T`, or error condition, but hide the ack.
+- is response `T' or an error really good and allows a smooth mapping of values with read/write, etc.?
 - sending L_Data.req wait for L_Data.con, etc.
 - allow a mapping from ga to dpt type for parsing.
 - remote 'start-async-receive' flag, because it always needed to receive

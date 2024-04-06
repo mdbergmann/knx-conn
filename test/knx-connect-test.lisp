@@ -27,7 +27,8 @@
          :individual-address
          (address:make-individual-address "1.2.3"))))
 
-(defvar *test-tunnelling-request* nil)
+(defvar *test-tunnelling-request-receive* nil)
+(defvar *test-tunnelling-request-ack* nil)
 
 (def-fixture request-value (receive-tunn-req-delay
                             connect-ok)
@@ -42,12 +43,11 @@
         (etypecase req
           (connect:knx-connect-request
            (when connect-ok
-             (setf knx-client::*channel-id* 1)
              (setf response-to-receive
                    (make-test-connect-response))))
           (tunnelling:knx-tunnelling-request
            (setf response-to-receive
-                 *test-tunnelling-request*))
+                 *test-tunnelling-request-receive*))
           (knx-tunnelling-ack
            t)
           (connect:knx-disconnect-request
@@ -55,12 +55,27 @@
            (setf response-to-receive
                  (connect::%make-disconnect-response 1 0)))))
       (answer ip-client:ip-receive-knx-data
-        (when response-to-receive
-          (when (typep response-to-receive 'tunnelling:knx-tunnelling-request)
-            (sleep receive-tunn-req-delay))
-          (prog1
-              `(,response-to-receive nil)
-            (setf response-to-receive nil))))
+        (if (null knx-client::*channel-id*)
+            (typecase response-to-receive
+              (knx-connect-response
+               (progn
+                 (setf knx-client::*channel-id* 1)
+                 (prog1
+                     `(,response-to-receive nil)
+                   (setf response-to-receive nil)))))
+            (when response-to-receive
+              ;; if there is an ack serve it first
+              (if *test-tunnelling-request-ack*
+                  (prog1
+                      `(,*test-tunnelling-request-ack* nil)
+                    (setf *test-tunnelling-request-ack* nil))
+                  (progn
+                    (when (typep response-to-receive
+                                 'tunnelling:knx-tunnelling-request)
+                      (sleep receive-tunn-req-delay))
+                    (prog1
+                        `(,response-to-receive nil)
+                      (setf response-to-receive nil)))))))
       (answer ip-client:ip-disconnect
         (setf ip-client::*conn* nil)
         (setf ip-client:*local-host-and-port* nil))    
@@ -69,7 +84,7 @@
       (unwind-protect
            (progn
              (&body))
-        (setf *test-tunnelling-request* nil)))))
+        (setf *test-tunnelling-request-receive* nil)))))
 
 ;; --------------------------------------
 ;; initialize
@@ -90,13 +105,17 @@
                       (eql knx-client::*channel-id* 1))))
       (knx-conn-destroy))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-connect)) 1)))
+               (= (length (invocations
+                           'ip-client:ip-connect)) 1)))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-send-knx-data)) 2)))
+               (= (length (invocations
+                           'ip-client:ip-send-knx-data)) 2)))
     (is-true (await-cond 1.5
-               (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))
+               (>= (length (invocations
+                            'ip-client:ip-receive-knx-data)) 1)))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-disconnect)) 1)))
+               (= (length (invocations
+                           'ip-client:ip-disconnect)) 1)))
     ;; check cleanup
     (is (eql ip-client::*conn* nil))
     (is (eql knxc::*asys* nil))
@@ -139,7 +158,8 @@
                           :enable-heartbeat t
                           :start-receive t)
            (is-true (await-cond 1.5
-                      (>= (length (invocations 'knx-client:send-connection-state)) 1))))
+                      (>= (length (invocations
+                                   'knx-client:send-connection-state)) 1))))
       (progn
         (knx-conn-destroy)
         (is (eql knx-client::*heartbeat-interval-secs*
@@ -156,23 +176,28 @@
 ;; -----------
 
 (test with-knx/ip--write-value--ok
-  (setf *test-tunnelling-request* (make-test-tunnelling-ack))
+  (setf *test-tunnelling-request-receive* (make-test-tunnelling-ack))
   (with-fixture request-value (0 t)
     (with-knx/ip ("12.23.34.45" :port 1234)
-      (is (eq t (fawait
-                 (write-value "1/2/3"
-                              'dpt:dpt-1.001
-                              t)
-                 :timeout 5))))
+      (is (eq t
+              (fawait
+               (write-value "1/2/3"
+                            'dpt:dpt-1.001
+                            t)
+               :timeout 5))))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-connect)) 1)))
+               (= (length (invocations
+                           'ip-client:ip-connect)) 1)))
     (is-true (await-cond 1.5
-               (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))
+               (>= (length (invocations
+                            'ip-client:ip-receive-knx-data)) 1)))
     ;; connect, write, disconnect
     (is-true (await-cond 1.5
-               (>= (length (invocations 'ip-client:ip-send-knx-data)) 3)))
+               (>= (length (invocations
+                            'ip-client:ip-send-knx-data)) 3)))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-disconnect)) 1)))
+               (= (length (invocations
+                           'ip-client:ip-disconnect)) 1)))
 
     (is-false ip-client::*conn*)
     (is-false knx-client::*channel-id*)))
@@ -189,19 +214,23 @@
             :timeout 5)
            'knx-client:knx-response-timeout-error)))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-connect)) 1)))
+               (= (length (invocations
+                           'ip-client:ip-connect)) 1)))
     (is-true (await-cond 1.5
-               (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))
+               (>= (length (invocations
+                            'ip-client:ip-receive-knx-data)) 1)))
     ;; connect, write, disconnect
     (is-true (await-cond 1.5
-               (>= (length (invocations 'ip-client:ip-send-knx-data)) 3)))
+               (>= (length (invocations
+                            'ip-client:ip-send-knx-data)) 3)))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-disconnect)) 1)))
+               (= (length (invocations
+                           'ip-client:ip-disconnect)) 1)))
 
     (is-false ip-client::*conn*)
     (is-false knx-client::*channel-id*)))
 
-(test with-knx/ip--error-on-ip-connect-should-cleanup
+(test with-knx/ip--error-on-ip-connect-should-cleanup--crit-error
   (setf knxc::*asys* nil
         knx-client::*channel-id* nil
         ip-client::*conn* nil)
@@ -230,7 +259,7 @@
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 0))
     (is (= (length (invocations 'ip-client:ip-disconnect)) 1)))
 
-(test with-knx/ip--error-on-establish-tunnel-connection
+(test with-knx/ip--error-on-establish-tunnel-connection--crit-error
   (with-fixture request-value (0 nil)
     (handler-case
         (progn
@@ -243,13 +272,17 @@
         (is (equal (format nil "~a" c)
                    "Could not establish tunnel connection!"))))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-connect)) 1)))
+               (= (length (invocations
+                           'ip-client:ip-connect)) 1)))
     (is-true (await-cond 1.5
-               (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))
+               (>= (length (invocations
+                            'ip-client:ip-receive-knx-data)) 1)))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-send-knx-data)) 1)))
+               (= (length (invocations
+                           'ip-client:ip-send-knx-data)) 1)))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-disconnect)) 1)))))
+               (= (length (invocations
+                           'ip-client:ip-disconnect)) 1)))))
 
 ;; request-value
 ;; -------------
@@ -265,7 +298,8 @@
           :dpt (dpt:make-dpt1 :switch :on))))
 
 (test request-value--wait-for-value
-  (setf *test-tunnelling-request* (make-test-tunnelling-request))
+  (setf *test-tunnelling-request-receive*
+        (make-test-tunnelling-request))
   (with-fixture request-value (0 t)
     (with-knx/ip ("12.23.34.45")
       (let ((value (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
@@ -275,7 +309,8 @@
         ))))
 
 (test request-value--wait-for-value--timeout
-  (setf *test-tunnelling-request* (make-test-tunnelling-request))
+  (setf *test-tunnelling-request-receive*
+        (make-test-tunnelling-request))
   (with-fixture request-value (1.5 t)
     (with-knx/ip ("12.23.34.45")
       (multiple-value-bind (res fut)
@@ -285,21 +320,24 @@
         (is (null res))
         ))))
 
-(defun make-test-tunnelling-request-from-bytes ()
+(defun make-test-tunnelling-request-dpt-9.001 ()
   (knx-conn.knx-obj:parse-root-knx-object
    (to-byte-seq
     (tunnelling:make-tunnelling-request
      :channel-id 1
      :seq-counter 1
      :cemi (cemi:make-default-cemi
-            :message-code +cemi-mc-l_data.req+
+            :message-code +cemi-mc-l_data.ind+
             :dest-address (address:make-group-address "1/2/3")
-            :apci (make-apci-gv-write)
+            :apci (make-apci-gv-response)
             :dpt (dpt:make-dpt9 :temperature 23.5))))))
 
 (test request-value--wait-for-value--unable-to-parse-dpt-type
   ;; dpt-type 9.001
-  (setf *test-tunnelling-request* (make-test-tunnelling-request-from-bytes))
+  (setf *test-tunnelling-request-ack*
+        (make-test-tunnelling-ack))
+  (setf *test-tunnelling-request-receive*
+        (make-test-tunnelling-request-dpt-9.001))
   (with-fixture request-value (0 t)
     (with-knx/ip ("12.23.34.45")
       (multiple-value-bind (res fut)
