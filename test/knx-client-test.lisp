@@ -353,16 +353,34 @@ In case of this the log must be checked."
         (is (typep request 'knx-tunnelling-request)))
       (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))))
 
+(defun make-test-tunnelling-req-1.001 ()
+  ;; to bytes and back to have dpt as bytes
+  (parse-root-knx-object
+   (to-byte-seq (make-tunnelling-request
+                 :channel-id 78
+                 :seq-counter 0
+                 :cemi (make-default-cemi
+                        :message-code +cemi-mc-l_data.ind+
+                        :dest-address (make-group-address "0/4/10")
+                        :apci (make-apci-gv-write)
+                        :dpt (make-dpt1 :switch :on))))))
+
+(test tunnelling-receive-request--ok--parse-registered-dpt
+  "Parses the dpt based on the provided ga -> dpt mapping."
+  (let* ((req (make-test-tunnelling-req-1.001))
+         (request)
+         (listener-fun (lambda (req)
+                         (setf request req))))
+    (with-mocks ()
+      (answer ip-client:ip-send-knx-data t)
+      (answer ip-client:ip-receive-knx-data `(,req nil))
+      (with-fixture env (listener-fun t)
+        (is-true (await-cond 1.5
+                   (not (null request))))
+        ))))
 
 (test tunnelling-received-ind-request-should-send-ack
-  (let ((req (make-tunnelling-request
-              :channel-id 78
-              :seq-counter 0
-              :cemi (make-default-cemi
-                     :message-code +cemi-mc-l_data.ind+
-                     :dest-address (make-group-address "0/4/10")
-                     :apci (make-apci-gv-write)
-                     :dpt (make-dpt1 :switch :on)))))
+  (let ((req (make-test-tunnelling-req-1.001)))
     (with-mocks ()
       (answer ip-client:ip-receive-knx-data `(,req nil))
       (answer (ip-client:ip-send-knx-data to-send)
@@ -377,14 +395,7 @@ In case of this the log must be checked."
                    (>= (length (invocations 'ip-client:ip-send-knx-data)) 1)))))))
 
 (test tunnelling-received-con-request-should-send-ack
-  (let ((req (make-tunnelling-request
-              :channel-id 78
-              :seq-counter 0
-              :cemi (make-default-cemi
-                     :message-code +cemi-mc-l_data.con+
-                     :dest-address (make-group-address "0/4/10")
-                     :apci (make-apci-gv-write)
-                     :dpt (make-dpt1 :switch :on)))))
+  (let ((req (make-test-tunnelling-req-1.001)))
     (with-mocks ()
       (answer ip-client:ip-receive-knx-data `(,req nil))
       (answer (ip-client:ip-send-knx-data to-send)

@@ -109,8 +109,8 @@ OK - wait for tunnel-ack before allowing next tunnel-request
 OK - map the ack for 'write-value' in knx-connect to just `T`, or error condition, but hide the ack.
 OK - sending L_Data.req wait for L_Data.ind-response, etc.
 OK - toggle dpt1
+=> - allow a mapping from ga to dpt type for parsing.
 - is response `T' or an error really good and allows a smooth mapping of values with read/write, etc.?
-- allow a mapping from ga to dpt type for parsing.
 - remote 'start-async-receive' flag, because it always needed to receive
 - remove use of *conn* and *local-host-and-port*
 - connstate (heartbeat): check for 3 failed requests

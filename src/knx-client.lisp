@@ -392,18 +392,17 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
                     (! self `(:send . ,(make-tunnelling-ack received)))
                     (log:debug "Tunnelling request, msg-code: ~a"
                               (cemi-mc-l_data-rep msc))
-                    (cond
-                      ((eql msc +cemi-mc-l_data.ind+)
-                       (progn
-                         (let* ((cemi (tunnelling-request-cemi received))
-                                (addr-src (cemi-source-addr cemi))
-                                (addr-src-string (address-string-rep addr-src))
-                                (ga-dest (cemi-destination-addr cemi))
-                                (ga-dest-string (address-string-rep ga-dest))
-                                (dpt (cemi-data cemi)))
-                           (log:info "Tunnelling ind: ~a -> ~a = ~a"
-                                     addr-src-string ga-dest-string dpt))))
-                      ((eql msc +cemi-mc-l_data.con+)
+                    (case msc
+                      (+cemi-mc-l_data.ind+
+                       (let* ((cemi (tunnelling-request-cemi received))
+                              (addr-src (cemi-source-addr cemi))
+                              (addr-src-string (address-string-rep addr-src))
+                              (ga-dest (cemi-destination-addr cemi))
+                              (ga-dest-string (address-string-rep ga-dest))
+                              (dpt (cemi-data cemi)))
+                         (log:info "Tunnelling ind: ~a -> ~a = ~a"
+                                   addr-src-string ga-dest-string dpt)))
+                      (+cemi-mc-l_data.con+
                        (log:debug "Tunnelling confirmation.")))
                     (progn
                       (log:debug "Notifying listeners of generic L_Data request...")
@@ -411,12 +410,10 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
                         (ignore-errors
                          (funcall listener-fun received))))))
                  (knx-tunnelling-ack
-                  (progn
-                    (log:debug "Received tunnelling ack: ~a" received)))
+                  (log:debug "Received tunnelling ack: ~a" received))
                  (knx-disconnect-request
-                  (progn
-                    (setf *channel-id* nil)
-                    (setf *seq-counter* 0)))
+                  (setf *channel-id* nil)
+                  (setf *seq-counter* 0))
                  (knx-connect-response
                   (log:debug "Received connect response: ~a" received)))
                (if (null (gethash received-type *awaited-things*))
