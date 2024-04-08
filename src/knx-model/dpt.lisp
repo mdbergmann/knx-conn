@@ -4,6 +4,7 @@
   (:import-from #:binding-arrows
                 #:->)
   (:export #:dpt
+           #:dpt-p
            #:dpt-value-type
            #:dpt-value
            #:dpt-raw-value
@@ -13,10 +14,12 @@
            #:parse-to-dpt
            ;; dpt1
            #:dpt1
+           #:dpt1-p
            #:make-dpt1
            #:dpt1-toggle
            ;; dpt9
            #:dpt9
+           #:dpt9-p
            #:make-dpt9
            ;; value/dpt types
            #:dpt-1.001

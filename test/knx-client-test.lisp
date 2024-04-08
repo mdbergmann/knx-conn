@@ -350,7 +350,8 @@ In case of this the log must be checked."
         (await-cond 1.5
           (not (null request)))
         (is (not (null request)))
-        (is (typep request 'knx-tunnelling-request)))
+        (is (typep request 'knx-tunnelling-request))
+        (is (typep (cemi-data (tunnelling-request-cemi request)) 'array)))
       (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))))
 
 (defun make-test-tunnelling-req-1.001 ()
@@ -375,9 +376,12 @@ In case of this the log must be checked."
       (answer ip-client:ip-send-knx-data t)
       (answer ip-client:ip-receive-knx-data `(,req nil))
       (with-fixture env (listener-fun t)
+        (setf knx-client:*group-address-dpt-mapping*
+              '(("0/4/10" dpt:dpt-1.001 "My switch")))
         (is-true (await-cond 1.5
                    (not (null request))))
-        ))))
+        (is (dpt:dpt-p (cemi-data (tunnelling-request-cemi request))))
+        (is (dpt:dpt1-p (cemi-data (tunnelling-request-cemi request))))))))
 
 (test tunnelling-received-ind-request-should-send-ack
   (let ((req (make-test-tunnelling-req-1.001)))

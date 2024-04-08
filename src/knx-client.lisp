@@ -9,6 +9,9 @@
                 #:reply)
   (:import-from #:timeutils
                 #:wait-cond)
+  (:shadowing-import-from #:alexandria
+                          #:when-let
+                          #:when-let*)
   (:export #:retrieve-descr-info
            #:establish-tunnel-connection
            #:close-tunnel-connection
@@ -24,6 +27,7 @@
            #:*receive-knx-data-recur-delay-secs*
            #:*default-receive-knx-data-recur-delay-secs*
            #:*response-wait-timeout-secs*
+           #:*group-address-dpt-mapping*
            #:reset-client-vars
            ;; async handler
            #:*async-handler*
@@ -108,6 +112,9 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 (defvar *tunnel-request-listeners* nil
   "A list of functions to be called when a tunnelling request is received.")
 
+(defvar *group-address-dpt-mapping* nil
+  "A mapping of group-addresses to their data point types.")
+
 (defvar *awaited-things* (make-hash-table :test #'eq)
   "Pool of received messages that are not handled otherwise.")
 
@@ -123,6 +130,7 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
         *default-heartbeat-interval-secs*)
   (setf *response-wait-timeout-secs*
         *default-response-wait-timeout-secs*)
+  (setf *group-address-dpt-mapping* nil)
   (setf *awaited-things*
         (make-hash-table :test #'eq)))
 
@@ -134,15 +142,6 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
   (prog1
       *seq-counter*
     (setf *seq-counter* (mod (1+ *seq-counter*) 255))))
-
-(defun add-tunnelling-request-listener (listener-fun)
-  (! *async-handler* `(:add-tunnel-req-listener . ,listener-fun)))
-
-(defun rem-tunnelling-request-listener (listener-fun)
-  (! *async-handler* `(:rem-tunnel-req-listener . ,listener-fun)))
-
-(defun clr-tunnelling-request-listeners ()
-  (! *async-handler* '(:clr-tunnel-req-listeners)))
 
 (defun %start-heartbeat ()
   (assert *async-handler* nil "No async-handler set!")
@@ -163,6 +162,18 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
                       (ac:system
                        (act:context *async-handler*)))))
       (wt:cancel scheduler *heartbeat-timer-sig*))))
+
+;; request listeners can be added during runtime
+;; so we have to take care of thread-safety
+
+(defun add-tunnelling-request-listener (listener-fun)
+  (! *async-handler* `(:add-tunnel-req-listener . ,listener-fun)))
+
+(defun rem-tunnelling-request-listener (listener-fun)
+  (! *async-handler* `(:rem-tunnel-req-listener . ,listener-fun)))
+
+(defun clr-tunnelling-request-listeners ()
+  (! *async-handler* '(:clr-tunnel-req-listeners)))
 
 ;; ---------------------------------
 ;; knx-ip protocol functions
@@ -388,21 +399,37 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
                (log:debug "Received: ~a" received-type)
                (typecase received
                  (knx-tunnelling-request
+                  (! self `(:send . ,(make-tunnelling-ack received)))
                   (let ((msc (tunnelling-cemi-message-code received)))
-                    (! self `(:send . ,(make-tunnelling-ack received)))
                     (log:debug "Tunnelling request, msg-code: ~a"
                               (cemi-mc-l_data-rep msc))
-                    (case msc
-                      (+cemi-mc-l_data.ind+
+                    (cond
+                      ((eql msc +cemi-mc-l_data.ind+)
                        (let* ((cemi (tunnelling-request-cemi received))
                               (addr-src (cemi-source-addr cemi))
                               (addr-src-string (address-string-rep addr-src))
                               (ga-dest (cemi-destination-addr cemi))
                               (ga-dest-string (address-string-rep ga-dest))
-                              (dpt (cemi-data cemi)))
-                         (log:info "Tunnelling ind: ~a -> ~a = ~a"
-                                   addr-src-string ga-dest-string dpt)))
-                      (+cemi-mc-l_data.con+
+                              (cemi-data (cemi-data cemi)))
+                         (log:debug "Tunnelling ind 1: ~a -> ~a = ~a"
+                                    addr-src-string ga-dest-string cemi-data)
+                         (when-let* ((mapping-data *group-address-dpt-mapping*)
+                                     (cemi-data-bytes (when (arrayp cemi-data)
+                                                        cemi-data))
+                                     (dpt-mapping (find
+                                                   ga-dest-string
+                                                   mapping-data
+                                                   :key #'car
+                                                   :test #'equal)))
+                           (log:debug "Found mapping for GA: ~a" dpt-mapping)
+                           (destructuring-bind (ga dpt-type label) dpt-mapping
+                             (declare (ignore ga))
+                             (let ((dpt (dpt:parse-to-dpt dpt-type cemi-data)))
+                               (setf cemi-data dpt)
+                               (setf (cemi-data cemi) dpt))
+                             (log:info "Tunnelling ind 2: ~a -> ~a = ~a (~a)"
+                                       addr-src-string ga-dest-string cemi-data label)))))
+                      ((eql msc +cemi-mc-l_data.con+)
                        (log:debug "Tunnelling confirmation.")))
                     (progn
                       (log:debug "Notifying listeners of generic L_Data request...")
