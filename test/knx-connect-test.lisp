@@ -304,7 +304,23 @@
       (let ((value
               (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
                       :timeout 10.0)))
-        (format t "value: ~a~%" value)
+        (is (eq value :on))
+        ))))
+
+(test request-value--wait-for-value--ok--with-additional-ga-dpt-mapping
+  (setf *test-tunnelling-request-ack*
+        (make-test-tunnelling-ack))
+  (setf *test-tunnelling-request-receive*
+        (parse-root-knx-object
+         (to-byte-seq
+          (make-test-tunnel-request-dpt-1.001-ind_response))))
+  (with-fixture request-value (0 t)
+    (with-knx/ip ("12.23.34.45")
+      (setf knx-client:*group-address-dpt-mapping*
+            '(("1/2/3" dpt:dpt-1.001 "Foobar")))
+      (let ((value
+              (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
+                      :timeout 10.0)))
         (is (eq value :on))
         ))))
 
@@ -316,7 +332,7 @@
       (multiple-value-bind (res fut)
           (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
                   :timeout 1.0)
-        (format t "value: ~a~%" (list res fut))
+        (is (not (null fut)))
         (is (null res))
         ))))
 

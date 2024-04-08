@@ -102,6 +102,19 @@ Only applicable if `start-receive` is true in `knx-conn-init`.")
 ;; global variables
 ;; ---------------------------------
 
+;; public
+;; --------------------
+
+(defvar *group-address-dpt-mapping* nil
+  "A mapping of group-addresses to their data point types.
+The mapping is a list of lists where each list has the form (group-address dpt-type label).
+The group-address is a string representation of the address, i.e. \"1/1/1\".
+The dpt-type is the type as available in the `dpt` package, i.e.: `dpt:dpt-1.001`.
+The label is a string that describes the group-address and is used for logging purposes.")
+
+;; private
+;; --------------------
+
 (defvar *channel-id* nil
   "The channel-id of the current tunnelling connection.")
 
@@ -111,9 +124,6 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 
 (defvar *tunnel-request-listeners* nil
   "A list of functions to be called when a tunnelling request is received.")
-
-(defvar *group-address-dpt-mapping* nil
-  "A mapping of group-addresses to their data point types.")
 
 (defvar *awaited-things* (make-hash-table :test #'eq)
   "Pool of received messages that are not handled otherwise.")
@@ -417,8 +427,7 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
                                      (cemi-data-bytes (when (arrayp cemi-data)
                                                         cemi-data))
                                      (dpt-mapping (find
-                                                   ga-dest-string
-                                                   mapping-data
+                                                   ga-dest-string mapping-data
                                                    :key #'car
                                                    :test #'equal)))
                            (log:debug "Found mapping for GA: ~a" dpt-mapping)
