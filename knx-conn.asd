@@ -106,9 +106,10 @@ OK - test with ack timeout in knx-client
 OK - resend tunnel-req once if no ack received within timeout
 OK - tunnel-ack should arrive in 1 second, though we can be more forgiving.
 OK - wait for tunnel-ack before allowing next tunnel-request
-=> - map the ack for 'write-value' in knx-connect to just `T`, or error condition, but hide the ack.
+OK - map the ack for 'write-value' in knx-connect to just `T`, or error condition, but hide the ack.
+OK - sending L_Data.req wait for L_Data.ind-response, etc.
+OK - toggle dpt1
 - is response `T' or an error really good and allows a smooth mapping of values with read/write, etc.?
-- sending L_Data.req wait for L_Data.con, etc.
 - allow a mapping from ga to dpt type for parsing.
 - remote 'start-async-receive' flag, because it always needed to receive
 - remove use of *conn* and *local-host-and-port*
@@ -116,8 +117,6 @@ OK - wait for tunnel-ack before allowing next tunnel-request
 - extract receive-handlers to separate functions.
 - allow hooks to be registered for value updates on certain group-addresses
 - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (Datum)
-- dpt1, more on/off options like (t / nil)
-- check why usocket-receive blocking needs so many CPU cycles (check running from repl)
 - make nice DSL for the supported dpt types
 ? - register awaiting response before sending (!), or the response can be received before wait
 

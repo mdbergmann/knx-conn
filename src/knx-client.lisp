@@ -385,7 +385,7 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
            (destructuring-bind (received err) args
              (declare (ignore err))
              (let ((received-type (type-of received)))
-               (log:info "Received: ~a" received-type)
+               (log:debug "Received: ~a" received-type)
                (typecase received
                  (knx-tunnelling-request
                   (let ((msc (tunnelling-cemi-message-code received)))

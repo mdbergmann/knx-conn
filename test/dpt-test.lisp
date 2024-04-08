@@ -11,6 +11,10 @@
 
 (in-suite dpt-tests)
 
+;; ------------------------------------
+;; dpt-1.001
+;; ------------------------------------
+
 (test create-dpt1-1.001
   ;; on
   (let ((dpt (make-dpt1 :switch :on)))
@@ -35,6 +39,15 @@
     (is (not (null dpt)))
     (is (eq (dpt-value dpt) :on))
     (is (eq (dpt-value-type dpt) 'dpt-1.001))))
+
+(test toggle-dpt1-1.001
+  (let* ((dpt (make-dpt1 :switch :on))
+         (toggled (dpt1-toggle dpt)))
+    (is (eq (dpt-value toggled) :off))))
+
+;; ------------------------------------
+;; dpt-9.001
+;; ------------------------------------
 
 (test create-dpt9-9.001
   (let ((dpt (make-dpt9 :temperature 23.5)))

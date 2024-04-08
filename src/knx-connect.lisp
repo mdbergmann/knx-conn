@@ -119,7 +119,7 @@ Returns `future:future` which resolves to `T' is all went well and error conditi
                                  (parse-to-dpt ,dpt-type
                                                cemi-data))))
                          (value (dpt-value dpt)))
-                    (log:debug "Received requested value: ~a for ga: ~a"
+                    (log:info "Received requested value: ~a for ga: ~a"
                                dpt group-address)
                     (fresolve value))
                 (error (e)

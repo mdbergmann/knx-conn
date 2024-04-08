@@ -11,8 +11,11 @@
            #:dpt-byte-len
            #:dpt-supports-optimized-p
            #:parse-to-dpt
+           ;; dpt1
            #:dpt1
            #:make-dpt1
+           #:dpt1-toggle
+           ;; dpt9
            #:dpt9
            #:make-dpt9
            ;; value/dpt types
@@ -132,6 +135,13 @@ Range:      b = {0 = off, 1 = on}"
                               (:off 0))))
     (t (error 'type-error :datum
               (format nil "Unsupported value type: ~a" value-sym)))))
+
+(defun dpt1-toggle (dpt)
+  "Toggle the value of the DPT1: `:on` -> `:off` and vise versa."
+  (make-dpt1 (dpt-value-type dpt)
+             (case (dpt-value dpt)
+               (:on :off)
+               (:off :on))))
 
 ;; ------------------------------
 ;; DPT9

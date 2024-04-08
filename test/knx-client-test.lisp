@@ -55,7 +55,7 @@
           (setf *response-wait-timeout-secs* resp-wait-timeout-store)
           (setf *receive-knx-data-recur-delay-secs* 0)
           (setf knx-client::*heartbeat-interval-secs*
-                knx-client::+default-heartbeat-interval-secs+)
+                knx-client::*default-heartbeat-interval-secs*)
           (setf knx-client::*channel-id* channel-id)
           (setf knx-client::*seq-counter* 0)
           (setf ip-client::*conn* nil)
