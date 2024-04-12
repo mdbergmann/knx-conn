@@ -21,9 +21,14 @@
            #:dpt9
            #:dpt9-p
            #:make-dpt9
+           ;; dpt5
+           #:dpt5
+           #:dpt5-p
+           #:make-dpt5
            ;; value/dpt types
            #:dpt-1.001
            #:dpt-9.001
+           #:dpt-5.001
            ;; conditions
            #:dpt-out-of-bounds-error))
 
@@ -34,7 +39,8 @@
 
 (defparameter *dpt-supported-value-types*
   '((:switch . dpt-1.001)
-    (:temperature . dpt-9.001)))
+    (:temperature . dpt-9.001)
+    (:scaling . dpt-5.001)))
 
 (defun dpt-value-type-p (value-type)
   "Check if the `VALUE-TYPE' is supported."
@@ -256,3 +262,33 @@ Resolution: 0.01 °C"
                                :len 2)
                    :value value)))))
 
+;; ------------------------------
+;; DPT5
+;; ------------------------------
+
+(defstruct (dpt5 (:include dpt)
+                 (:constructor %make-dpt5))
+  "Data Point Type 5 for '8-Bit Unsigned Value' (1 Octets)
+
+"
+  (raw-value (error "Required raw-value!") :type (vector octet 1))
+  (value (error "Required value!") :type octet))
+
+(defun make-dpt5 (value-sym value)
+  "5.001 Scaling (%) 0-100
+`VALUE-SYM' can be `:scaling' or `dpt-5.001'."
+  (declare (octet value))
+  (ecase value-sym
+    (:scaling
+     (%make-dpt5 :value-type 'dpt-5.001
+                 :raw-value (seq-to-array (vector value) :len 1)
+                 :value value))))
+
+(defmethod dpt-byte-len ((dpt dpt5))
+  1)
+
+(defmethod dpt-value ((dpt dpt5))
+  (dpt5-value dpt))
+
+(defmethod to-byte-seq ((dpt dpt5))
+  (dpt5-raw-value dpt))

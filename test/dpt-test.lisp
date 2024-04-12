@@ -85,3 +85,14 @@
       (is (not (null parsed-dpt)))
       (is (= (dpt-value parsed-dpt) -123.52)))))
 
+;; ------------------------------------
+;; dpt-5.001
+;; ------------------------------------
+
+(test create-dpt5-5.001
+  (let ((dpt (make-dpt5 :scaling 23)))
+    (is (eq (dpt-value-type dpt) 'dpt-5.001))
+    (is (= 1 (dpt-byte-len dpt)))
+    (is (= (dpt-value dpt) 23))
+    (is (equalp #(23) (to-byte-seq dpt))))
+  )
