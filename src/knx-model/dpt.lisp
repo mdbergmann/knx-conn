@@ -40,10 +40,16 @@
 
 (defparameter *dpt-supported-value-types*
   '((:switch . dpt-1.001)
-    (:temperature . dpt-9.001)
     (:scaling . dpt-5.001)
     (:ucount . dpt-5.010)
+    (:temperature . dpt-9.001)
     ))
+
+(defun %named-value-sym-for-dpt-sym (sym)
+  (car (or
+        (find sym
+              *dpt-supported-value-types* :test #'eq :key #'cdr)
+        (list sym))))
 
 (defun dpt-value-type-p (value-type)
   "Check if the `VALUE-TYPE' is supported."
@@ -141,15 +147,13 @@ Range:      b = {0 = off, 1 = on}"
 
 (defun make-dpt1 (value-sym value)
   "supported `value-sym': `(or :switch 'dpt-1.001)` as switch with `:on` or `:off` values."
-  (cond
-    ((member value-sym '(:switch dpt-1.001))
-     (%make-dpt1 :value-type 'dpt-1.001
-                 :value value
-                 :raw-value (ecase value
-                              (:on 1)
-                              (:off 0))))
-    (t (error 'type-error :datum
-              (format nil "Unsupported value type: ~a" value-sym)))))
+  (ecase (%named-value-sym-for-dpt-sym value-sym)
+    (:switch
+        (%make-dpt1 :value-type 'dpt-1.001
+                    :value value
+                    :raw-value (ecase value
+                                 (:on 1)
+                                 (:off 0))))))
 
 (defun dpt1-toggle (dpt)
   "Toggle the value of the DPT1: `:on` -> `:off` and vise versa."
@@ -157,6 +161,72 @@ Range:      b = {0 = off, 1 = on}"
              (case (dpt-value dpt)
                (:on :off)
                (:off :on))))
+
+;; ------------------------------
+;; DPT5
+;; ------------------------------
+
+(defstruct (dpt5 (:include dpt)
+                 (:constructor %make-dpt5))
+  "Data Point Type 5 for '8-Bit Unsigned Value' (1 Octets)"
+  (raw-value (error "Required raw-value!") :type (vector octet 1))
+  (value (error "Required value!") :type octet))
+
+(defparameter *scale-factor-5.001* (/ 100 255))
+
+(defun make-dpt5 (value-sym value)
+  "5.001 Scaling (%) values: 0-100,
+5.010 Value_1_Ucount values: 0-255
+`VALUE-SYM' can be:
+- `:scaling' or `dpt-5.001'
+- `:count' or `dpt-5.010'."
+  (declare (octet value))
+  (check-type value octet)
+  (ecase (%named-value-sym-for-dpt-sym value-sym)
+    (:scaling
+     (%with-bounds-check
+         (lambda () (<= 0 value 100))
+       (%make-dpt5 :value-type 'dpt-5.001
+                   :raw-value (seq-to-array
+                               (vector (truncate
+                                        (/ value *scale-factor-5.001*)))
+                               :len 1)
+                   :value value)))
+    (:ucount
+     (%make-dpt5 :value-type 'dpt-5.010
+                 :raw-value (seq-to-array (vector value) :len 1)
+                 :value value))))
+
+(defmethod dpt-byte-len ((dpt dpt5))
+  1)
+
+(defmethod dpt-value ((dpt dpt5))
+  (dpt5-value dpt))
+
+(defmethod to-byte-seq ((dpt dpt5))
+  (dpt5-raw-value dpt))
+
+(defmethod parse-to-dpt ((value-type (eql 'dpt-5.001)) byte-vec)
+  (unless (= (length byte-vec) 1)
+    (error 'knx-unable-to-parse
+           :format-control "Byte vector must be of length 1"
+           :format-arguments (list value-type)))
+  (log:debug "Byte vector for DPT5.001: ~a" byte-vec)
+  (%make-dpt5 :value-type value-type
+              :raw-value (seq-to-array byte-vec :len 1)
+              :value (truncate
+                      (* (elt byte-vec 0)
+                         *scale-factor-5.001*))))
+
+(defmethod parse-to-dpt ((value-type (eql 'dpt-5.010)) byte-vec)
+  (unless (= (length byte-vec) 1)
+    (error 'knx-unable-to-parse
+           :format-control "Byte vector must be of length 1"
+           :format-arguments (list value-type)))
+  (log:debug "Byte vector for DPT5.010: ~a" byte-vec)
+  (%make-dpt5 :value-type value-type
+              :raw-value (seq-to-array byte-vec :len 1)
+              :value (elt byte-vec 0)))
 
 ;; ------------------------------
 ;; DPT9
@@ -258,7 +328,7 @@ Resolution: 0.01 °C"
   "9.001 Temperature (°C)
 `VALUE-SYM' can be `:temperature' for 9.001."
   (declare (float value))
-  (ecase value-sym
+  (ecase (%named-value-sym-for-dpt-sym value-sym)
     (:temperature
      (%with-bounds-check
          (lambda () (<= -273.0 value 670760.96))
@@ -267,69 +337,3 @@ Resolution: 0.01 °C"
                                (%make-dpt9-double-octet-float-value value)
                                :len 2)
                    :value value)))))
-
-;; ------------------------------
-;; DPT5
-;; ------------------------------
-
-(defstruct (dpt5 (:include dpt)
-                 (:constructor %make-dpt5))
-  "Data Point Type 5 for '8-Bit Unsigned Value' (1 Octets)"
-  (raw-value (error "Required raw-value!") :type (vector octet 1))
-  (value (error "Required value!") :type octet))
-
-(defparameter *scale-factor-5.001* (/ 100 255))
-
-(defun make-dpt5 (value-sym value)
-  "5.001 Scaling (%) values: 0-100,
-5.010 Value_1_Ucount values: 0-255
-`VALUE-SYM' can be:
-- `:scaling' or `dpt-5.001'
-- `:count' or `dpt-5.010'."
-  (declare (octet value))
-  (check-type value octet)
-  (ecase value-sym
-    (:scaling
-     (%with-bounds-check
-         (lambda () (<= 0 value 100))
-       (%make-dpt5 :value-type 'dpt-5.001
-                   :raw-value (seq-to-array
-                               (vector (truncate
-                                        (/ value *scale-factor-5.001*)))
-                               :len 1)
-                   :value value)))
-    (:ucount
-     (%make-dpt5 :value-type 'dpt-5.010
-                 :raw-value (seq-to-array (vector value) :len 1)
-                 :value value))))
-
-(defmethod dpt-byte-len ((dpt dpt5))
-  1)
-
-(defmethod dpt-value ((dpt dpt5))
-  (dpt5-value dpt))
-
-(defmethod to-byte-seq ((dpt dpt5))
-  (dpt5-raw-value dpt))
-
-(defmethod parse-to-dpt ((value-type (eql 'dpt-5.001)) byte-vec)
-  (unless (= (length byte-vec) 1)
-    (error 'knx-unable-to-parse
-           :format-control "Byte vector must be of length 1"
-           :format-arguments (list value-type)))
-  (log:debug "Byte vector for DPT5.001: ~a" byte-vec)
-  (%make-dpt5 :value-type value-type
-              :raw-value (seq-to-array byte-vec :len 1)
-              :value (truncate
-                      (* (elt byte-vec 0)
-                         *scale-factor-5.001*))))
-
-(defmethod parse-to-dpt ((value-type (eql 'dpt-5.010)) byte-vec)
-  (unless (= (length byte-vec) 1)
-    (error 'knx-unable-to-parse
-           :format-control "Byte vector must be of length 1"
-           :format-arguments (list value-type)))
-  (log:debug "Byte vector for DPT5.010: ~a" byte-vec)
-  (%make-dpt5 :value-type value-type
-              :raw-value (seq-to-array byte-vec :len 1)
-              :value (elt byte-vec 0)))

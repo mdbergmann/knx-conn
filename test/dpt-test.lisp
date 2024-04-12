@@ -129,6 +129,7 @@
     (is (= 1 (dpt-byte-len dpt)))
     (is (= (dpt-value dpt) 67))
     (is (equalp #(67) (to-byte-seq dpt))))
+  (is-true (make-dpt5 'dpt-5.010 101))
   (signals type-error (make-dpt5 :unknown 23))
   (signals type-error (make-dpt5 :ucount "23.5"))
   (signals type-error (make-dpt5 :ucount 23.5))
