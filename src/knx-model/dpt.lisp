@@ -275,6 +275,8 @@ Resolution: 0.01 °C"
   (raw-value (error "Required raw-value!") :type (vector octet 1))
   (value (error "Required value!") :type octet))
 
+(defparameter *scale-factor-5.001* (/ 100 255))
+
 (defun make-dpt5 (value-sym value)
   "5.001 Scaling (%) values: 0-100
 `VALUE-SYM' can be `:scaling' or `dpt-5.001'."
@@ -285,7 +287,10 @@ Resolution: 0.01 °C"
      (%with-bounds-check
          (lambda () (<= 0 value 100))
        (%make-dpt5 :value-type 'dpt-5.001
-                   :raw-value (seq-to-array (vector value) :len 1)
+                   :raw-value (seq-to-array
+                               (vector (truncate
+                                        (/ value *scale-factor-5.001*)))
+                               :len 1)
                    :value value)))))
 
 (defmethod dpt-byte-len ((dpt dpt5))
@@ -305,4 +310,6 @@ Resolution: 0.01 °C"
   (log:debug "Byte vector for DPT5.001: ~a" byte-vec)
   (%make-dpt5 :value-type value-type
               :raw-value (seq-to-array byte-vec :len 1)
-              :value (elt byte-vec 0)))
+              :value (truncate
+                      (* (elt byte-vec 0)
+                         *scale-factor-5.001*))))

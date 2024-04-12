@@ -90,11 +90,16 @@
 ;; ------------------------------------
 
 (test create-dpt5-5.001
-  (let ((dpt (make-dpt5 :scaling 23)))
+  (let ((dpt (make-dpt5 :scaling 50)))
     (is (eq (dpt-value-type dpt) 'dpt-5.001))
     (is (= 1 (dpt-byte-len dpt)))
-    (is (= (dpt-value dpt) 23))
-    (is (equalp #(23) (to-byte-seq dpt))))
+    (is (= (dpt-value dpt) 50))
+    (is (<= 127 (aref (to-byte-seq dpt) 0) 129)))
+  (let ((dpt (make-dpt5 :scaling 100)))
+    (is (eq (dpt-value-type dpt) 'dpt-5.001))
+    (is (= 1 (dpt-byte-len dpt)))
+    (is (= (dpt-value dpt) 100))
+    (is (= 255 (aref (to-byte-seq dpt) 0))))
   (signals type-error (make-dpt5 :unknown 23))
   (signals type-error (make-dpt5 :scaling "23.5"))
   (signals type-error (make-dpt5 :scaling 23.5))
@@ -105,7 +110,11 @@
 (test parse-dpt5-5.001
   (let ((dpt (parse-to-dpt
               (value-type-string-to-symbol "5.001")
-              #(34))))
+              #(128))))
     (is (not (null dpt)))
-    (is (= (dpt-value dpt) 34))
-    (is (eq (dpt-value-type dpt) 'dpt-5.001))))
+    (is (= (dpt-value dpt) 50))
+    (is (eq (dpt-value-type dpt) 'dpt-5.001)))
+  (let ((dpt (parse-to-dpt
+              (value-type-string-to-symbol "5.001")
+              #(255))))
+    (is (= (dpt-value dpt) 100))))
