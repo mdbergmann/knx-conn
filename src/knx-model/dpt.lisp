@@ -28,6 +28,7 @@
            ;; value/dpt types
            #:dpt-1.001
            #:dpt-5.001
+           #:dpt-5.010
            #:dpt-9.001
            ;; conditions
            #:dpt-out-of-bounds-error))
@@ -40,7 +41,9 @@
 (defparameter *dpt-supported-value-types*
   '((:switch . dpt-1.001)
     (:temperature . dpt-9.001)
-    (:scaling . dpt-5.001)))
+    (:scaling . dpt-5.001)
+    (:ucount . dpt-5.010)
+    ))
 
 (defun dpt-value-type-p (value-type)
   "Check if the `VALUE-TYPE' is supported."
@@ -278,8 +281,11 @@ Resolution: 0.01 °C"
 (defparameter *scale-factor-5.001* (/ 100 255))
 
 (defun make-dpt5 (value-sym value)
-  "5.001 Scaling (%) values: 0-100
-`VALUE-SYM' can be `:scaling' or `dpt-5.001'."
+  "5.001 Scaling (%) values: 0-100,
+5.010 Value_1_Ucount values: 0-255
+`VALUE-SYM' can be:
+- `:scaling' or `dpt-5.001'
+- `:count' or `dpt-5.010'."
   (declare (octet value))
   (check-type value octet)
   (ecase value-sym
@@ -291,7 +297,11 @@ Resolution: 0.01 °C"
                                (vector (truncate
                                         (/ value *scale-factor-5.001*)))
                                :len 1)
-                   :value value)))))
+                   :value value)))
+    (:ucount
+     (%make-dpt5 :value-type 'dpt-5.010
+                 :raw-value (seq-to-array (vector value) :len 1)
+                 :value value))))
 
 (defmethod dpt-byte-len ((dpt dpt5))
   1)
@@ -313,3 +323,13 @@ Resolution: 0.01 °C"
               :value (truncate
                       (* (elt byte-vec 0)
                          *scale-factor-5.001*))))
+
+(defmethod parse-to-dpt ((value-type (eql 'dpt-5.010)) byte-vec)
+  (unless (= (length byte-vec) 1)
+    (error 'knx-unable-to-parse
+           :format-control "Byte vector must be of length 1"
+           :format-arguments (list value-type)))
+  (log:debug "Byte vector for DPT5.010: ~a" byte-vec)
+  (%make-dpt5 :value-type value-type
+              :raw-value (seq-to-array byte-vec :len 1)
+              :value (elt byte-vec 0)))

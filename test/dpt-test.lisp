@@ -118,3 +118,32 @@
               (value-type-string-to-symbol "5.001")
               #(255))))
     (is (= (dpt-value dpt) 100))))
+
+;; ------------------------------------
+;; dpt-5.010
+;; ------------------------------------
+
+(test create-dpt5-5.010
+  (let ((dpt (make-dpt5 :ucount 67)))
+    (is (eq (dpt-value-type dpt) 'dpt-5.010))
+    (is (= 1 (dpt-byte-len dpt)))
+    (is (= (dpt-value dpt) 67))
+    (is (equalp #(67) (to-byte-seq dpt))))
+  (signals type-error (make-dpt5 :unknown 23))
+  (signals type-error (make-dpt5 :ucount "23.5"))
+  (signals type-error (make-dpt5 :ucount 23.5))
+  ;; enforce limits
+  (signals type-error (make-dpt5 :ucount -24))
+  (signals type-error (make-dpt5 :ucount 256)))
+
+(test parse-dpt5-5.010
+  (let ((dpt (parse-to-dpt
+              (value-type-string-to-symbol "5.010")
+              #(128))))
+    (is (not (null dpt)))
+    (is (= (dpt-value dpt) 128))
+    (is (eq (dpt-value-type dpt) 'dpt-5.010)))
+  (let ((dpt (parse-to-dpt
+              (value-type-string-to-symbol "5.010")
+              #(255))))
+    (is (= (dpt-value dpt) 255))))
