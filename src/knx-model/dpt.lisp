@@ -276,7 +276,7 @@ Resolution: 0.01 °C"
   (value (error "Required value!") :type octet))
 
 (defun make-dpt5 (value-sym value)
-  "5.001 Scaling (%) 0-100
+  "5.001 Scaling (%) values: 0-100
 `VALUE-SYM' can be `:scaling' or `dpt-5.001'."
   (declare (octet value))
   (check-type value octet)
@@ -296,3 +296,13 @@ Resolution: 0.01 °C"
 
 (defmethod to-byte-seq ((dpt dpt5))
   (dpt5-raw-value dpt))
+
+(defmethod parse-to-dpt ((value-type (eql 'dpt-5.001)) byte-vec)
+  (unless (= (length byte-vec) 1)
+    (error 'knx-unable-to-parse
+           :format-control "Byte vector must be of length 1"
+           :format-arguments (list value-type)))
+  (log:debug "Byte vector for DPT5.001: ~a" byte-vec)
+  (%make-dpt5 :value-type value-type
+              :raw-value (seq-to-array byte-vec :len 1)
+              :value (elt byte-vec 0)))

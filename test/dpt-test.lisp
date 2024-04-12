@@ -100,5 +100,12 @@
   (signals type-error (make-dpt5 :scaling 23.5))
   ;; enforce limits
   (signals type-error (make-dpt5 :scaling -24))
-  (signals dpt-out-of-bounds-error (make-dpt5 :scaling 101))
-  )
+  (signals dpt-out-of-bounds-error (make-dpt5 :scaling 101)))
+
+(test parse-dpt5-5.001
+  (let ((dpt (parse-to-dpt
+              (value-type-string-to-symbol "5.001")
+              #(34))))
+    (is (not (null dpt)))
+    (is (= (dpt-value dpt) 34))
+    (is (eq (dpt-value-type dpt) 'dpt-5.001))))
