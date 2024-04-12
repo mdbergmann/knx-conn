@@ -95,4 +95,10 @@
     (is (= 1 (dpt-byte-len dpt)))
     (is (= (dpt-value dpt) 23))
     (is (equalp #(23) (to-byte-seq dpt))))
+  (signals type-error (make-dpt5 :unknown 23))
+  (signals type-error (make-dpt5 :scaling "23.5"))
+  (signals type-error (make-dpt5 :scaling 23.5))
+  ;; enforce limits
+  (signals type-error (make-dpt5 :scaling -24))
+  (signals dpt-out-of-bounds-error (make-dpt5 :scaling 101))
   )

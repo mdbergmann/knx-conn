@@ -17,18 +17,18 @@
            #:dpt1-p
            #:make-dpt1
            #:dpt1-toggle
-           ;; dpt9
-           #:dpt9
-           #:dpt9-p
-           #:make-dpt9
            ;; dpt5
            #:dpt5
            #:dpt5-p
            #:make-dpt5
+           ;; dpt9
+           #:dpt9
+           #:dpt9-p
+           #:make-dpt9
            ;; value/dpt types
            #:dpt-1.001
-           #:dpt-9.001
            #:dpt-5.001
+           #:dpt-9.001
            ;; conditions
            #:dpt-out-of-bounds-error))
 
@@ -62,7 +62,10 @@
                      (simple-condition-format-control condition)))))
 
 (defmacro %with-bounds-check (bounds-fun &body body)
-  "Assert that the value is within the bounds."
+  "Assert that the value is within the bounds.
+The function `bounds-fun', called with the value should make sure that
+the value is within the desired value bounds.
+If it is, the function should return `T' and `NIL' if it is not."
   `(progn
      (unless (funcall ,bounds-fun)
        (error 'dpt-out-of-bounds-error :format-control "Value out of bounds"))
@@ -268,9 +271,7 @@ Resolution: 0.01 °C"
 
 (defstruct (dpt5 (:include dpt)
                  (:constructor %make-dpt5))
-  "Data Point Type 5 for '8-Bit Unsigned Value' (1 Octets)
-
-"
+  "Data Point Type 5 for '8-Bit Unsigned Value' (1 Octets)"
   (raw-value (error "Required raw-value!") :type (vector octet 1))
   (value (error "Required value!") :type octet))
 
@@ -278,11 +279,14 @@ Resolution: 0.01 °C"
   "5.001 Scaling (%) 0-100
 `VALUE-SYM' can be `:scaling' or `dpt-5.001'."
   (declare (octet value))
+  (check-type value octet)
   (ecase value-sym
     (:scaling
-     (%make-dpt5 :value-type 'dpt-5.001
-                 :raw-value (seq-to-array (vector value) :len 1)
-                 :value value))))
+     (%with-bounds-check
+         (lambda () (<= 0 value 100))
+       (%make-dpt5 :value-type 'dpt-5.001
+                   :raw-value (seq-to-array (vector value) :len 1)
+                   :value value)))))
 
 (defmethod dpt-byte-len ((dpt dpt5))
   1)
