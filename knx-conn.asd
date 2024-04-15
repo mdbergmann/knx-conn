@@ -112,11 +112,11 @@ OK - toggle dpt1
 OK - allow a mapping from ga to dpt type for parsing.
 OK - supply ga->dpt mapping on knx-init
 => - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (time-of-day), 11.001 (date)
+- extract receive-handlers to separate functions.
 - is response `T' or an error really good and allows a smooth mapping of values with read/write, etc.?
-- remote 'start-async-receive' flag, because it always needed to receive
+- remove 'start-async-receive' flag, because it always needed to receive
 - remove use of *conn* and *local-host-and-port*
 - connstate (heartbeat): check for 3 failed requests
-- extract receive-handlers to separate functions.
 - allow hooks to be registered for value updates on certain group-addresses
 - make nice DSL for the supported dpt types
 ? - register awaiting response before sending (!), or the response can be received before wait
