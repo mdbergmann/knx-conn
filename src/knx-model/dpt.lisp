@@ -385,16 +385,39 @@ Encoding:   Day = [0 .. 7]
 (defmethod to-byte-seq ((dpt dpt10))
   (dpt10-raw-value dpt))
 
+(defmethod parse-to-dpt ((value-type (eql 'dpt-10.001)) byte-vec)
+  (unless (= (length byte-vec) 3)
+    (error 'knx-unable-to-parse
+           :format-control "Byte vector must be of length 3"
+           :format-arguments (list value-type)))
+  (log:debug "Byte vector for DPT10.001: ~a" byte-vec)
+  (let* ((oct3 (aref byte-vec 0))
+         (day (ash (logand oct3 #x70) -5))
+         (hour (logand oct3 #x1f))
+         (minute (aref byte-vec 1))
+         (second (aref byte-vec 2))
+         (ts (local-time:now)))
+    (when (> day 0)
+      (local-time:adjust-timestamp! ts
+        (offset :day-of-week (aref local-time::+day-names-as-keywords+
+                                   (if (= day 7) 0 day)))))
+    (local-time:adjust-timestamp! ts
+      (set :hour hour)
+      (set :minute minute)
+      (set :sec second))
+    (%make-dpt10 :value-type value-type
+                 :raw-value (seq-to-array byte-vec :len 3)
+                 :value ts)))
+
 (defun %timestamp-to-dpt10 (timestamp)
   (let ((day (local-time:timestamp-day-of-week timestamp))
         (hours (local-time:timestamp-hour timestamp))
-        (minutes (local-time:timestamp-minute timestamp))
-        (seconds (local-time:timestamp-second timestamp)))
+        (minute (local-time:timestamp-minute timestamp))
+        (second (local-time:timestamp-second timestamp)))
     (setf day (if (= day 0) 7 day))
-    (let ((oct3 (logior (ash day 5) (logand hours #x1f)))
-          (oct2 (logand minutes #x3f))
-          (oct1 (logand seconds #x3f)))
-      (vector oct3 oct2 oct1))))
+    (vector (logior (ash day 5) (logand hours #x1f))
+            (logand minute #x3f)
+            (logand second #x3f))))
 
 (defun make-dpt10 (timestamp)
   (check-type timestamp local-time:timestamp)

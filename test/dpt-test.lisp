@@ -162,4 +162,13 @@
     (is (= 3 (dpt-byte-len dpt)))
     (is (eq now (dpt-value dpt)))
     (is (equalp (vector 85 minutes seconds) (to-byte-seq dpt))))
+  (signals type-error (make-dpt10 23)))
+
+(test parse-dpt10-10.001
+  (let ((dpt (parse-to-dpt
+              (value-type-string-to-symbol "10.001")
+              #(85 32 41))))
+    (is (not (null dpt)))
+    (is (typep (dpt-value dpt) 'local-time:timestamp))
+    (is (eq (dpt-value-type dpt) 'dpt-10.001)))
   )
