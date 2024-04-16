@@ -25,11 +25,16 @@
            #:dpt9
            #:dpt9-p
            #:make-dpt9
+           ;; dpt10
+           #:dpt10
+           #:dpt10-p
+           #:make-dpt10
            ;; value/dpt types
            #:dpt-1.001
            #:dpt-5.001
            #:dpt-5.010
            #:dpt-9.001
+           #:dpt-10.001
            ;; conditions
            #:dpt-out-of-bounds-error))
 
@@ -43,6 +48,7 @@
     (:scaling . dpt-5.001)
     (:ucount . dpt-5.010)
     (:temperature . dpt-9.001)
+    (:time-of-day . dpt-10.001)
     ))
 
 (defun %named-value-sym-for-dpt-sym (sym)
@@ -337,3 +343,63 @@ Resolution: 0.01 °C"
                                (%make-dpt9-double-octet-float-value value)
                                :len 2)
                    :value value)))))
+
+;; ------------------------------
+;; DPT10
+;; ------------------------------
+
+(defstruct (dpt10 (:include dpt)
+                  (:constructor %make-dpt10))
+  "10.001 Time Of Day
+            +-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+Field Names | (Day)       (Hour)            |
+Encoding    | N   N   N   U   U   U   U   U |
+            +-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+            | 0   0   (Minutes)             |
+            |         U   U   U   U   U   U |
+            +-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+            | 0   0   (Seconds)             |
+            |         U   U   U   U   U   U |
+            +---+---+---+---+---+---+---+---+
+Format:     3 octets (N3 U5 r2 U6 r2 U6)
+Encoding:   Day = [0 .. 7]
+            1 = Monday, 2 = Tuesday, 3 = Wednesday, 4 = Thursday, 5 = Friday, 6 = Saturday, 7 = Sunday, 0 = no day
+            Hour    = [0 .. 23]
+            Minutes = [0 .. 59]
+            Seconds = [0 .. 59]"
+  (raw-value (error "Required raw-value!") :type (vector octet 3))
+  (value (error "Required value!") :type local-time:timestamp))
+
+(defmethod dpt-byte-len ((dpt dpt10))
+  3)
+
+(defmethod dpt-value ((dpt dpt10))
+  (dpt10-value dpt))
+
+(defmethod dpt-raw-value ((dpt dpt10))
+  (dpt10-raw-value dpt))
+
+(defmethod dpt-supports-optimized-p ((dpt dpt10))
+  nil)
+
+(defmethod to-byte-seq ((dpt dpt10))
+  (dpt10-raw-value dpt))
+
+(defun %timestamp-to-dpt10 (timestamp)
+  (let ((day (local-time:timestamp-day-of-week timestamp))
+        (hours (local-time:timestamp-hour timestamp))
+        (minutes (local-time:timestamp-minute timestamp))
+        (seconds (local-time:timestamp-second timestamp)))
+    (setf day (if (= day 0) 7 day))
+    (let ((oct3 (logior (ash day 5) (logand hours #x1f)))
+          (oct2 (logand minutes #x3f))
+          (oct1 (logand seconds #x3f)))
+      (vector oct3 oct2 oct1))))
+
+(defun make-dpt10 (timestamp)
+  (check-type timestamp local-time:timestamp)
+  (%make-dpt10 :value-type 'dpt-10.001
+               :raw-value (seq-to-array
+                           (%timestamp-to-dpt10 timestamp)
+                           :len 3)
+               :value timestamp))

@@ -148,3 +148,18 @@
               (value-type-string-to-symbol "5.010")
               #(255))))
     (is (= (dpt-value dpt) 255))))
+
+;; ------------------------------------
+;; dpt-10.001
+;; ------------------------------------
+
+(test create-dpt10-10.001
+  (let* ((now (local-time:now))
+         (minutes (local-time:timestamp-minute now))
+         (seconds (local-time:timestamp-second now))
+         (dpt (make-dpt10 now)))
+    (is (eq (dpt-value-type dpt) 'dpt-10.001))
+    (is (= 3 (dpt-byte-len dpt)))
+    (is (eq now (dpt-value dpt)))
+    (is (equalp (vector 85 minutes seconds) (to-byte-seq dpt))))
+  )
