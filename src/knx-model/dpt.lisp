@@ -29,12 +29,17 @@
            #:dpt10
            #:dpt10-p
            #:make-dpt10
+           ;; dpt11
+           #:dpt11
+           #:dpt11-p
+           #:make-dpt11
            ;; value/dpt types
            #:dpt-1.001
            #:dpt-5.001
            #:dpt-5.010
            #:dpt-9.001
            #:dpt-10.001
+           #:dpt-11.001
            ;; conditions
            #:dpt-out-of-bounds-error))
 
@@ -49,6 +54,7 @@
     (:ucount . dpt-5.010)
     (:temperature . dpt-9.001)
     (:time-of-day . dpt-10.001)
+    (:date . dpt-11.001)
     ))
 
 (defun %named-value-sym-for-dpt-sym (sym)
@@ -424,5 +430,63 @@ Encoding:   Day = [0 .. 7]
   (%make-dpt10 :value-type 'dpt-10.001
                :raw-value (seq-to-array
                            (%timestamp-to-dpt10 timestamp)
+                           :len 3)
+               :value timestamp))
+
+;; ------------------------------
+;; DPT11
+;; ------------------------------
+
+(defstruct (dpt11 (:include dpt)
+                  (:constructor %make-dpt11))
+  "11.001 Date
+            +-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+Field Names | 0   0   0   (Day)             |
+Encoding    |             U   U   U   U   U |
+            +-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+            | 0   0   0   0   (Month)       |
+            |                 U   U   U   U |
+            +-7-+-6-+-5-+-4-+-3-+-2-+-1-+-0-+
+            | 0   (Year)                    |
+            |     U   U   U   U   U   U   U |
+            +---+---+---+---+---+---+---+---+
+Format:     3 octets (r3 U5 r4 U4 r1 U7)
+Encoding:   Day   = [1 .. 31]
+            Month = [1 .. 12]
+            Year  = [0 .. 99]
+This format covers the range 1990 to 2089. The following interpretation shall be carried out by devices receiving the Data Point Type 11.001 and carrying out calculations on the basis of the entire 3rd octet:  
+- If Octet 3 contains value ≥ 90 : interpret as 20th century
+- If Octet 3 contains value < 90: interpret as 21st century"
+  (raw-value (error "Required raw-value!") :type (vector octet 3))
+  (value (error "Required value!") :type local-time:timestamp))
+
+(defmethod dpt-byte-len ((dpt dpt11))
+  3)
+
+(defmethod dpt-value ((dpt dpt11))
+  (dpt11-value dpt))
+
+(defmethod dpt-raw-value ((dpt dpt11))
+  (dpt11-raw-value dpt))
+
+(defmethod dpt-supports-optimized-p ((dpt dpt11))
+  nil)
+
+(defmethod to-byte-seq ((dpt dpt11))
+  (dpt11-raw-value dpt))
+
+(defun %timestamp-to-dpt11 (timestamp)
+  (let ((day (local-time:timestamp-day timestamp))
+        (month (local-time:timestamp-month timestamp))
+        (year (local-time:timestamp-year timestamp)))
+    (vector day
+            month
+            (- year 2000))))
+
+(defun make-dpt11 (timestamp)
+  (check-type timestamp local-time:timestamp)
+  (%make-dpt11 :value-type 'dpt-11.001
+               :raw-value (seq-to-array
+                           (%timestamp-to-dpt11 timestamp)
                            :len 3)
                :value timestamp))

@@ -183,3 +183,20 @@
                 (= (local-time:timestamp-second value) 41)
                 (= (local-time:timestamp-day-of-week value) 2)
                 (= (local-time:timestamp-hour value) 21))))))
+
+;; ------------------------------------
+;; dpt-11.001
+;; ------------------------------------
+
+(test create-dpt11-11.001
+  (let* ((today (local-time:today))
+         (day (local-time:timestamp-day today))
+         (month (local-time:timestamp-month today))
+         (year (- (local-time:timestamp-year today) 2000))
+         (dpt (make-dpt11 today)))
+    (is (eq (dpt-value-type dpt) 'dpt-11.001))
+    (is (= 3 (dpt-byte-len dpt)))
+    (is (eq today (dpt-value dpt)))
+    (is (equalp (vector day month year)
+                (to-byte-seq dpt))))
+  (signals type-error (make-dpt11 23)))
