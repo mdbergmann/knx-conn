@@ -490,3 +490,21 @@ This format covers the range 1990 to 2089. The following interpretation shall be
                            (%timestamp-to-dpt11 timestamp)
                            :len 3)
                :value timestamp))
+
+(defmethod parse-to-dpt ((value-type (eql 'dpt-11.001)) byte-vec)
+  (unless (= (length byte-vec) 3)
+    (error 'knx-unable-to-parse
+           :format-control "Byte vector must be of length 3"
+           :format-arguments (list value-type)))
+  (log:debug "Byte vector for DPT11.001: ~a" byte-vec)
+  (let* ((day (logand (aref byte-vec 0) #x1f))
+         (month (logand (aref byte-vec 1) #x0f))
+         (year (logand (aref byte-vec 2) #x7f))
+         (year-offset (if (>= year 90) 1900 2000))
+         (ts (local-time:adjust-timestamp (local-time:today)
+               (set :day-of-month day)
+               (set :month month)
+               (set :year (+ year year-offset)))))
+    (%make-dpt11 :value-type value-type
+                 :raw-value (seq-to-array byte-vec :len 3)
+                 :value ts)))

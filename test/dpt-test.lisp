@@ -200,3 +200,20 @@
     (is (equalp (vector day month year)
                 (to-byte-seq dpt))))
   (signals type-error (make-dpt11 23)))
+
+(test parse-dpt11-11.001
+  (let ((dpt (parse-to-dpt
+              (value-type-string-to-symbol "11.001")
+              #(24 4 18)))
+        (dpt2 (parse-to-dpt
+               (value-type-string-to-symbol "11.001")
+               #(24 4 90))))
+    (is (not (null dpt)))
+    (let ((value (dpt-value dpt)))
+      (is (typep value 'local-time:timestamp))
+      (is (eq (dpt-value-type dpt) 'dpt-11.001))
+      (is-true (and
+                (= (local-time:timestamp-year value) 2018)
+                (= (local-time:timestamp-month value) 4)
+                (= (local-time:timestamp-day value) 24))))
+    (is (= (local-time:timestamp-year (dpt-value dpt2)) 1990))))
