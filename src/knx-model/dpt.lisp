@@ -411,11 +411,11 @@ Encoding:   Day = [0 .. 7]
 
 (defun %timestamp-to-dpt10 (timestamp)
   (let ((day (local-time:timestamp-day-of-week timestamp))
-        (hours (local-time:timestamp-hour timestamp))
+        (hour (local-time:timestamp-hour timestamp))
         (minute (local-time:timestamp-minute timestamp))
         (second (local-time:timestamp-second timestamp)))
     (setf day (if (= day 0) 7 day))
-    (vector (logior (ash day 5) (logand hours #x1f))
+    (vector (logior (ash day 5) (logand hour #x1f))
             (logand minute #x3f)
             (logand second #x3f))))
 

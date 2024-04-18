@@ -155,13 +155,19 @@
 
 (test create-dpt10-10.001
   (let* ((now (local-time:now))
-         (minutes (local-time:timestamp-minute now))
-         (seconds (local-time:timestamp-second now))
-         (dpt (make-dpt10 now)))
+         (day (local-time:timestamp-day-of-week now))
+         (hour (local-time:timestamp-hour now))
+         (minute (local-time:timestamp-minute now))
+         (second (local-time:timestamp-second now))
+         (dpt (make-dpt10 now))
+         (expected-oct3 (progn
+                          (+ (ash (if (= day 0) 7 day) 5)
+                             (logand hour #x1f)))))
     (is (eq (dpt-value-type dpt) 'dpt-10.001))
     (is (= 3 (dpt-byte-len dpt)))
     (is (eq now (dpt-value dpt)))
-    (is (equalp (vector 85 minutes seconds) (to-byte-seq dpt))))
+    (is (equalp (vector expected-oct3 minute second)
+                (to-byte-seq dpt))))
   (signals type-error (make-dpt10 23)))
 
 (test parse-dpt10-10.001
@@ -169,6 +175,11 @@
               (value-type-string-to-symbol "10.001")
               #(85 32 41))))
     (is (not (null dpt)))
-    (is (typep (dpt-value dpt) 'local-time:timestamp))
-    (is (eq (dpt-value-type dpt) 'dpt-10.001)))
-  )
+    (let ((value (dpt-value dpt)))
+      (is (typep value 'local-time:timestamp))
+      (is (eq (dpt-value-type dpt) 'dpt-10.001))
+      (is-true (and
+                (= (local-time:timestamp-minute value) 32)
+                (= (local-time:timestamp-second value) 41)
+                (= (local-time:timestamp-day-of-week value) 2)
+                (= (local-time:timestamp-hour value) 21))))))
