@@ -321,19 +321,19 @@ Resolution: 0.01 °C"
             (if value-negative
                 (loop-scaled (lambda (val) (< val -2048.0)))
                 (loop-scaled (lambda (val) (> val 2047.0)))))
-      (log:debug "Exponents for '~a': ~a" value exponent)
-      (log:debug "Scaled value for '~a': ~a" value scaled-value)
+      (log:trace "Exponents for '~a': ~a" value exponent)
+      (log:trace "Scaled value for '~a': ~a" value scaled-value)
 
       (let ((mantissa (logand (round scaled-value) #x7ff)))
-        (log:debug "Mantissa for '~a': ~a" value mantissa)
+        (log:trace "Mantissa for '~a': ~a" value mantissa)
         (let ((high-byte (->
                            (if value-negative #x80 #x00)
                            (logior (ash exponent 3)
                                    (ash mantissa -8)))))
-          (log:debug "High byte for '~a': ~a" value high-byte)
+          (log:trace "High byte for '~a': ~a" value high-byte)
 
           (let ((low-byte (logand mantissa #xff)))
-            (log:debug "Low byte for '~a': ~a" value low-byte)
+            (log:trace "Low byte for '~a': ~a" value low-byte)
             (vector high-byte low-byte)))))))
 
 (defun make-dpt9 (value-sym value)

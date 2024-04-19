@@ -46,46 +46,6 @@
     (is (eq (dpt-value toggled) :off))))
 
 ;; ------------------------------------
-;; dpt-9.001
-;; ------------------------------------
-
-(test create-dpt9-9.001
-  (let ((dpt (make-dpt9 :temperature 23.5)))
-    (is (eq (dpt-value-type dpt) 'dpt-9.001))
-    (is (= 2 (dpt-byte-len dpt)))
-    (is (= (dpt-value dpt) 23.5))
-    (is (equalp #(12 151) (to-byte-seq dpt))))
-  (signals type-error (make-dpt9 :unknown 23.5))
-  (signals type-error (make-dpt9 :temperature "23.5"))
-  (signals type-error (make-dpt9 :temperature 23))
-  ;; enforce limits
-  (signals dpt-out-of-bounds-error (make-dpt9 :temperature -274.0))
-  ;; parse
-  (let ((dpt (parse-to-dpt
-              (value-type-string-to-symbol "9.001")
-              #(12 151))))
-    (is (not (null dpt)))
-    (is (= (dpt-value dpt) 23.5))
-    (is (eq (dpt-value-type dpt) 'dpt-9.001)))
-  ;; 0
-  (let ((dpt (make-dpt9 :temperature 0.0)))
-    (is (= (dpt-value dpt) 0.0))
-    (is (equalp #(0 0) (to-byte-seq dpt)))
-    (is (equalp (parse-to-dpt
-                 (value-type-string-to-symbol "9.001")
-                 #(0 0))
-                dpt)))
-  ;; -123.5
-  (let ((dpt (make-dpt9 :temperature -123.5)))
-    (is (= (dpt-value dpt) -123.5))
-    (is (equalp #(153 248) (to-byte-seq dpt)))
-    (let ((parsed-dpt (parse-to-dpt
-                       (value-type-string-to-symbol "9.001")
-                       #(153 248))))
-      (is (not (null parsed-dpt)))
-      (is (= (dpt-value parsed-dpt) -123.52)))))
-
-;; ------------------------------------
 ;; dpt-5.001
 ;; ------------------------------------
 
@@ -148,6 +108,43 @@
               (value-type-string-to-symbol "5.010")
               #(255))))
     (is (= (dpt-value dpt) 255))))
+
+;; ------------------------------------
+;; dpt-9.001
+;; ------------------------------------
+
+(test create-dpt9-9.001
+  (let ((dpt (make-dpt9 :temperature 23.5)))
+    (is (eq (dpt-value-type dpt) 'dpt-9.001))
+    (is (= 2 (dpt-byte-len dpt)))
+    (is (= (dpt-value dpt) 23.5))
+    (is (equalp #(12 151) (to-byte-seq dpt))))
+  (signals type-error (make-dpt9 :unknown 23.5))
+  (signals type-error (make-dpt9 :temperature "23.5"))
+  (signals type-error (make-dpt9 :temperature 23))
+  ;; enforce limits
+  (signals dpt-out-of-bounds-error (make-dpt9 :temperature -274.0))
+  ;; parse
+  (let ((dpt (parse-to-dpt
+              (value-type-string-to-symbol "9.001")
+              #(12 151))))
+    (is (not (null dpt)))
+    (is (= (dpt-value dpt) 23.5))
+    (is (eq (dpt-value-type dpt) 'dpt-9.001))))
+
+(test value-conversions-dpt9-9.001
+  (macrolet ((test-value (value)
+               `(let ((dpt (make-dpt9 :temperature ,value)))
+                  (is (= (dpt-value dpt) ,value))
+                  (let ((parsed-dpt (parse-to-dpt
+                                     'dpt:dpt-9.001
+                                     (to-byte-seq dpt))))
+                    (is (not (null parsed-dpt)))
+                    (is (= (dpt-value parsed-dpt) ,value))))))
+    (test-value 0.0)
+    (test-value -123.52)
+    (test-value 20.48)
+    (test-value -20.47)))
 
 ;; ------------------------------------
 ;; dpt-10.001
