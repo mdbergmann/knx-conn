@@ -344,6 +344,134 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
                           :on-complete-fun completed-fun)
         (tasks:task-start fun))))
 
+(defun %async-handler-knx-send (knxobj)
+  (ip-send-knx-data knxobj))
+
+(defun %async-handler-knx-receive (self)
+  (%doasync :receiver
+            (lambda ()
+              (prog1
+                  (handler-case
+                      ;; this call blocks until data is available
+                      ;; or there is an error
+                      (ip-receive-knx-data)
+                    (error (c)
+                      (log:warn "Error on receiving: ~a" c)))
+                ;; in tests only to slow down the loop
+                (sleep *receive-knx-data-recur-delay-secs*)
+                (when (ip-connected-p)
+                  (! self `(:receive . nil)))))
+            (lambda (result)
+              (handler-case
+                  (when (and result (car result))
+                    (log:debug "KNX message received: (~a ~a)"
+                               (type-of (first result))
+                               (second result))
+                    (! self `(:received . ,result)))
+                (error (c)
+                  (log:warn "Error on received: ~a" c))))))
+
+(defun %async-handler-knx-received (self received-knxobj)
+  (destructuring-bind (received err) received-knxobj
+    (declare (ignore err))
+    (let ((received-type (type-of received)))
+      (log:debug "Received: ~a" received-type)
+      (typecase received
+        (knx-tunnelling-request
+         (! self `(:send . ,(make-tunnelling-ack received)))
+         (let ((msc (tunnelling-cemi-message-code received)))
+           (log:debug "Tunnelling request, msg-code: ~a"
+                      (cemi-mc-l_data-rep msc))
+           (cond
+             ((eql msc +cemi-mc-l_data.ind+)
+              (let* ((cemi (tunnelling-request-cemi received))
+                     (addr-src (cemi-source-addr cemi))
+                     (addr-src-string (address-string-rep addr-src))
+                     (ga-dest (cemi-destination-addr cemi))
+                     (ga-dest-string (address-string-rep ga-dest))
+                     (cemi-data (cemi-data cemi)))
+                (log:debug "Tunnelling ind 1: ~a -> ~a = ~a"
+                           addr-src-string ga-dest-string cemi-data)
+                (when-let* ((mapping-data *group-address-dpt-mapping*)
+                            (cemi-data-bytes (when (arrayp cemi-data)
+                                               cemi-data))
+                            (dpt-mapping (find
+                                          ga-dest-string mapping-data
+                                          :key #'car
+                                          :test #'equal)))
+                  (log:debug "Found mapping for GA: ~a" dpt-mapping)
+                  (destructuring-bind (ga dpt-type label) dpt-mapping
+                    (declare (ignore ga))
+                    (let ((dpt (dpt:parse-to-dpt dpt-type cemi-data)))
+                      (setf cemi-data dpt)
+                      (setf (cemi-data cemi) dpt))
+                    (log:info "Tunnelling ind 2: ~a -> ~a = ~a (~a)"
+                              addr-src-string ga-dest-string cemi-data label)))))
+             ((eql msc +cemi-mc-l_data.con+)
+              (log:debug "Tunnelling confirmation.")))
+           (progn
+             (log:debug "Notifying listeners of generic L_Data request...")
+             (dolist (listener-fun *tunnel-request-listeners*)
+               (ignore-errors
+                (funcall listener-fun received))))))
+        (knx-tunnelling-ack
+         (log:debug "Received tunnelling ack: ~a" received))
+        (knx-disconnect-request
+         (setf *channel-id* nil)
+         (setf *seq-counter* 0))
+        (knx-connect-response
+         (log:debug "Received connect response: ~a" received)))
+      (if (null (gethash received-type *awaited-things*))
+          (log:debug "Discarding received: ~a" received-type)
+          (progn
+            (log:debug "Filling awaited response: ~a" received-type)
+            (setf (gethash received-type *awaited-things*) received-knxobj))))))
+
+(defun %async-handler-knx-wait (self sender wait-args)
+  (labels ((timeout-elapsed-p (start-time resp-wait-time)
+             (let ((now (get-universal-time))
+                   ;; `resp-wait-time', if float will cause problems in the comparison here
+                   (end-time (+ (truncate resp-wait-time) start-time)))
+               (> now end-time)))
+           (wait-and-call-again (resp-type start-time resp-wait-time)
+             (%doasync :waiter
+                       (lambda ()
+                         (sleep 0.2) ;deliberate wait or the loop will be too fast
+                         (! self `(:wait-on-resp
+                                   . (,resp-type ,start-time ,resp-wait-time))
+                            sender)))))
+    (destructuring-bind (resp-type start-time resp-wait-time) wait-args
+      (if (null (gethash resp-type *awaited-things*))
+          (setf (gethash resp-type *awaited-things*) 'awaiting))
+      (when (timeout-elapsed-p start-time resp-wait-time)
+        (log:info "Time elapsed waiting for response of type: ~a" resp-type)
+        (reply `(nil ,(make-condition
+                       'knx-response-timeout-error
+                       :format-control
+                       (format nil
+                               "Timeout waiting for response of type ~a"
+                               resp-type))))
+        (remhash resp-type *awaited-things*)
+        (return-from %async-handler-knx-wait))
+      (log:trace "Checking for awaited response of type: ~a" resp-type)
+      (let ((thing (gethash resp-type *awaited-things*)))
+        (case thing
+          ('awaiting
+           (progn
+             (log:trace "Awaited thing not received yet")
+             (wait-and-call-again resp-type start-time resp-wait-time)))
+          (otherwise
+           (destructuring-bind (response err) thing
+             (log:debug "Received awaited thing: (resp:~a err:~a)" (type-of response) err)
+             (reply thing)
+             (remhash resp-type *awaited-things*))))))))
+
+(defun %async-handler-knx-heartbeat ()
+  ;; extended wait timeout according to spec
+  (let ((*response-wait-timeout-secs*
+          +heartbeat-resp-wait-timeout-secs+))
+    (send-connection-state)))
+
 (defun %async-handler-receive (msg)
   "Allows the following messages:
 
@@ -362,142 +490,25 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
     (log:trace "async-handler received msg: ~a" msg-sym)
     (let ((self act:*self*)
           (sender act:*sender*))
-      (labels ((timeout-elapsed-p (start-time resp-wait-time)
-                 (let ((now (get-universal-time))
-                       ;; `resp-wait-time', if float will cause problems in the comparison here
-                       (end-time (+ (truncate resp-wait-time) start-time)))
-                   (> now end-time)))
-               (wait-and-call-again (resp-type start-time resp-wait-time)
-                 (%doasync :waiter
-                          (lambda ()
-                            (sleep 0.2) ;deliberate wait or the loop will be too fast
-                            (! self `(:wait-on-resp
-                                      . (,resp-type ,start-time ,resp-wait-time))
-                               sender)))))
-        (case msg-sym
-          (:send
-           (ip-send-knx-data args))
-
-          (:receive
-           (%doasync :receiver
-                    (lambda ()
-                      (prog1
-                          (handler-case
-                              ;; this call blocks until data is available
-                              ;; or there is an error
-                              (ip-receive-knx-data)
-                            (error (c)
-                              (log:warn "Error on receiving: ~a" c)))
-                        ;; in tests only to slow down the loop
-                        (sleep *receive-knx-data-recur-delay-secs*)
-                        (when (ip-connected-p)
-                          (! self `(:receive . nil)))))
-                    (lambda (result)
-                      (handler-case
-                          (when (and result (car result))
-                            (log:debug "KNX message received: (~a ~a)"
-                                       (type-of (first result))
-                                       (second result))
-                            (! self `(:received . ,result)))
-                        (error (c)
-                          (log:warn "Error on received: ~a" c))))))
-
-          (:received
-           (destructuring-bind (received err) args
-             (declare (ignore err))
-             (let ((received-type (type-of received)))
-               (log:debug "Received: ~a" received-type)
-               (typecase received
-                 (knx-tunnelling-request
-                  (! self `(:send . ,(make-tunnelling-ack received)))
-                  (let ((msc (tunnelling-cemi-message-code received)))
-                    (log:debug "Tunnelling request, msg-code: ~a"
-                              (cemi-mc-l_data-rep msc))
-                    (cond
-                      ((eql msc +cemi-mc-l_data.ind+)
-                       (let* ((cemi (tunnelling-request-cemi received))
-                              (addr-src (cemi-source-addr cemi))
-                              (addr-src-string (address-string-rep addr-src))
-                              (ga-dest (cemi-destination-addr cemi))
-                              (ga-dest-string (address-string-rep ga-dest))
-                              (cemi-data (cemi-data cemi)))
-                         (log:debug "Tunnelling ind 1: ~a -> ~a = ~a"
-                                    addr-src-string ga-dest-string cemi-data)
-                         (when-let* ((mapping-data *group-address-dpt-mapping*)
-                                     (cemi-data-bytes (when (arrayp cemi-data)
-                                                        cemi-data))
-                                     (dpt-mapping (find
-                                                   ga-dest-string mapping-data
-                                                   :key #'car
-                                                   :test #'equal)))
-                           (log:debug "Found mapping for GA: ~a" dpt-mapping)
-                           (destructuring-bind (ga dpt-type label) dpt-mapping
-                             (declare (ignore ga))
-                             (let ((dpt (dpt:parse-to-dpt dpt-type cemi-data)))
-                               (setf cemi-data dpt)
-                               (setf (cemi-data cemi) dpt))
-                             (log:info "Tunnelling ind 2: ~a -> ~a = ~a (~a)"
-                                       addr-src-string ga-dest-string cemi-data label)))))
-                      ((eql msc +cemi-mc-l_data.con+)
-                       (log:debug "Tunnelling confirmation.")))
-                    (progn
-                      (log:debug "Notifying listeners of generic L_Data request...")
-                      (dolist (listener-fun *tunnel-request-listeners*)
-                        (ignore-errors
-                         (funcall listener-fun received))))))
-                 (knx-tunnelling-ack
-                  (log:debug "Received tunnelling ack: ~a" received))
-                 (knx-disconnect-request
-                  (setf *channel-id* nil)
-                  (setf *seq-counter* 0))
-                 (knx-connect-response
-                  (log:debug "Received connect response: ~a" received)))
-               (if (null (gethash received-type *awaited-things*))
-                   (log:debug "Discarding received: ~a" received-type)
-                   (progn
-                     (log:debug "Filling awaited response: ~a" received-type)
-                     (setf (gethash received-type *awaited-things*) args))))))
-          
-          (:wait-on-resp
-           (destructuring-bind (resp-type start-time resp-wait-time) args
-             (if (null (gethash resp-type *awaited-things*))
-                 (setf (gethash resp-type *awaited-things*) 'awaiting))
-             (when (timeout-elapsed-p start-time resp-wait-time)
-               (log:info "Time elapsed waiting for response of type: ~a" resp-type)
-               (reply `(nil ,(make-condition
-                              'knx-response-timeout-error
-                              :format-control
-                              (format nil
-                                      "Timeout waiting for response of type ~a"
-                                      resp-type))))
-               (remhash resp-type *awaited-things*)
-               (return-from %async-handler-receive))
-             (log:trace "Checking for awaited response of type: ~a" resp-type)
-             (let ((thing (gethash resp-type *awaited-things*)))
-               (case thing
-                 ('awaiting
-                  (progn
-                    (log:trace "Awaited thing not received yet")
-                    (wait-and-call-again resp-type start-time resp-wait-time)))
-                 (otherwise
-                  (destructuring-bind (response err) thing
-                    (log:debug "Received awaited thing: (resp:~a err:~a)" (type-of response) err)
-                    (reply thing)
-                    (remhash resp-type *awaited-things*)))))))
-
-          (:heartbeat
-           ;; extended wait timeout according to spec
-           (let ((*response-wait-timeout-secs*
-                   +heartbeat-resp-wait-timeout-secs+))
-             (send-connection-state)))
-
-          (:add-tunnel-req-listener
-           (push args *tunnel-request-listeners*))
-          (:rem-tunnel-req-listener
-           (setf *tunnel-request-listeners*
-                 (remove args *tunnel-request-listeners*)))
-          (:clr-tunnel-req-listeners
-           (setf *tunnel-request-listeners* nil)))))))
+      (case msg-sym
+        (:send
+         (%async-handler-knx-send args))
+        (:receive
+         (%async-handler-knx-receive self))
+        (:received
+         (%async-handler-knx-received self args))          
+        (:wait-on-resp
+         (%async-handler-knx-wait self sender args))
+        (:heartbeat
+         (%async-handler-knx-heartbeat))
+        ;; tunnel-req-listener management
+        (:add-tunnel-req-listener
+         (push args *tunnel-request-listeners*))
+        (:rem-tunnel-req-listener
+         (setf *tunnel-request-listeners*
+               (remove args *tunnel-request-listeners*)))
+        (:clr-tunnel-req-listeners
+         (setf *tunnel-request-listeners* nil))))))
 
 (defun start-async-receive ()
   (assert *async-handler* nil "No async-handler set!")
