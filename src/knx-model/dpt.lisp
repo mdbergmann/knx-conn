@@ -116,6 +116,12 @@ If it is, the function should return `T' and `NIL' if it is not."
 I.e. the value for switches, dimmers, temperature sensors, etc. are all encoded using DPTs. The DPTs are used to encode and decode the data for transmission over the KNX bus."
   (value-type (error "Required value-type") :type dpt-value-type))
 
+(defun %assert-byte-vec (value-type byte-vec len)
+  (unless (= (length byte-vec) len)
+    (error 'knx-unable-to-parse
+           :format-control (format nil "Byte vector must be of length ~a" len)
+           :format-arguments (list value-type))))
+
 ;; ------------------------------
 ;; DPT1
 ;; ------------------------------
@@ -148,10 +154,7 @@ Range:      b = {0 = off, 1 = on}"
   (vector (dpt1-raw-value dpt)))
 
 (defmethod parse-to-dpt ((value-type (eql 'dpt-1.001)) byte-vec)
-  (unless (= (length byte-vec) 1)
-    (error 'knx-unable-to-parse
-           :format-control "Byte vector must be of length 1"
-           :format-arguments (list value-type)))
+  (%assert-byte-vec value-type byte-vec 1)
   (let ((value (if (zerop (aref byte-vec 0))
                    :off
                    :on)))
@@ -219,10 +222,7 @@ Range:      b = {0 = off, 1 = on}"
   (dpt5-raw-value dpt))
 
 (defmethod parse-to-dpt ((value-type (eql 'dpt-5.001)) byte-vec)
-  (unless (= (length byte-vec) 1)
-    (error 'knx-unable-to-parse
-           :format-control "Byte vector must be of length 1"
-           :format-arguments (list value-type)))
+  (%assert-byte-vec value-type byte-vec 1)
   (log:debug "Byte vector for DPT5.001: ~a" byte-vec)
   (%make-dpt5 :value-type value-type
               :raw-value (seq-to-array byte-vec :len 1)
@@ -231,10 +231,7 @@ Range:      b = {0 = off, 1 = on}"
                          *scale-factor-5.001*))))
 
 (defmethod parse-to-dpt ((value-type (eql 'dpt-5.010)) byte-vec)
-  (unless (= (length byte-vec) 1)
-    (error 'knx-unable-to-parse
-           :format-control "Byte vector must be of length 1"
-           :format-arguments (list value-type)))
+  (%assert-byte-vec value-type byte-vec 1)
   (log:debug "Byte vector for DPT5.010: ~a" byte-vec)
   (%make-dpt5 :value-type value-type
               :raw-value (seq-to-array byte-vec :len 1)
@@ -275,10 +272,7 @@ Encoding:   Float Value = (0.01 * M)*2(E)
   (dpt9-raw-value dpt))
 
 (defmethod parse-to-dpt ((value-type (eql 'dpt-9.001)) byte-vec)
-  (unless (= (length byte-vec) 2)
-    (error 'knx-unable-to-parse
-           :format-control "Byte vector must be of length 2"
-           :format-arguments (list value-type)))
+  (%assert-byte-vec value-type byte-vec 2)
   (log:debug "Byte vector for DPT9.001: ~a" byte-vec)
   (labels ((two-completement-or-value (value)
              (if (zerop value)
@@ -392,10 +386,7 @@ Encoding:   Day = [0 .. 7]
   (dpt10-raw-value dpt))
 
 (defmethod parse-to-dpt ((value-type (eql 'dpt-10.001)) byte-vec)
-  (unless (= (length byte-vec) 3)
-    (error 'knx-unable-to-parse
-           :format-control "Byte vector must be of length 3"
-           :format-arguments (list value-type)))
+  (%assert-byte-vec value-type byte-vec 3)
   (log:debug "Byte vector for DPT10.001: ~a" byte-vec)
   (let* ((oct3 (aref byte-vec 0))
          (day (ash (logand oct3 #x70) -5))
@@ -492,10 +483,7 @@ This format covers the range 1990 to 2089. The following interpretation shall be
                :value timestamp))
 
 (defmethod parse-to-dpt ((value-type (eql 'dpt-11.001)) byte-vec)
-  (unless (= (length byte-vec) 3)
-    (error 'knx-unable-to-parse
-           :format-control "Byte vector must be of length 3"
-           :format-arguments (list value-type)))
+  (%assert-byte-vec value-type byte-vec 3)
   (log:debug "Byte vector for DPT11.001: ~a" byte-vec)
   (let* ((day (logand (aref byte-vec 0) #x1f))
          (month (logand (aref byte-vec 1) #x0f))
