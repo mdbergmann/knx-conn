@@ -371,6 +371,44 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
                 (error (c)
                   (log:warn "Error on received: ~a" c))))))
 
+(defun %handle-tunnelling-request (self received)
+  (! self `(:send . ,(make-tunnelling-ack received)))
+  (let ((msc (tunnelling-cemi-message-code received)))
+    (log:debug "Tunnelling request, msg-code: ~a"
+               (cemi-mc-l_data-rep msc))
+    (cond
+      ((eql msc +cemi-mc-l_data.ind+)
+       (let* ((cemi (tunnelling-request-cemi received))
+              (addr-src (cemi-source-addr cemi))
+              (addr-src-string (address-string-rep addr-src))
+              (ga-dest (cemi-destination-addr cemi))
+              (ga-dest-string (address-string-rep ga-dest))
+              (cemi-data (cemi-data cemi)))
+         (log:debug "Tunnelling ind 1: ~a -> ~a = ~a"
+                    addr-src-string ga-dest-string cemi-data)
+         (when-let* ((mapping-data *group-address-dpt-mapping*)
+                     (cemi-data-bytes (when (arrayp cemi-data)
+                                        cemi-data))
+                     (dpt-mapping (find
+                                   ga-dest-string mapping-data
+                                   :key #'car
+                                   :test #'equal)))
+           (log:debug "Found mapping for GA: ~a" dpt-mapping)
+           (destructuring-bind (ga dpt-type label) dpt-mapping
+             (declare (ignore ga))
+             (let ((dpt (dpt:parse-to-dpt dpt-type cemi-data)))
+               (setf cemi-data dpt)
+               (setf (cemi-data cemi) dpt))
+             (log:info "Tunnelling ind 2: ~a -> ~a = ~a (~a)"
+                       addr-src-string ga-dest-string cemi-data label)))))
+      ((eql msc +cemi-mc-l_data.con+)
+       (log:debug "Tunnelling confirmation.")))
+    (progn
+      (log:debug "Notifying listeners of generic L_Data request...")
+      (dolist (listener-fun *tunnel-request-listeners*)
+        (ignore-errors
+         (funcall listener-fun received))))))
+
 (defun %async-handler-knx-received (self received-knxobj)
   (destructuring-bind (received err) received-knxobj
     (declare (ignore err))
@@ -378,42 +416,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
       (log:debug "Received: ~a" received-type)
       (typecase received
         (knx-tunnelling-request
-         (! self `(:send . ,(make-tunnelling-ack received)))
-         (let ((msc (tunnelling-cemi-message-code received)))
-           (log:debug "Tunnelling request, msg-code: ~a"
-                      (cemi-mc-l_data-rep msc))
-           (cond
-             ((eql msc +cemi-mc-l_data.ind+)
-              (let* ((cemi (tunnelling-request-cemi received))
-                     (addr-src (cemi-source-addr cemi))
-                     (addr-src-string (address-string-rep addr-src))
-                     (ga-dest (cemi-destination-addr cemi))
-                     (ga-dest-string (address-string-rep ga-dest))
-                     (cemi-data (cemi-data cemi)))
-                (log:info "Tunnelling ind 1: ~a -> ~a = ~a"
-                           addr-src-string ga-dest-string cemi-data)
-                (when-let* ((mapping-data *group-address-dpt-mapping*)
-                            (cemi-data-bytes (when (arrayp cemi-data)
-                                               cemi-data))
-                            (dpt-mapping (find
-                                          ga-dest-string mapping-data
-                                          :key #'car
-                                          :test #'equal)))
-                  (log:debug "Found mapping for GA: ~a" dpt-mapping)
-                  (destructuring-bind (ga dpt-type label) dpt-mapping
-                    (declare (ignore ga))
-                    (let ((dpt (dpt:parse-to-dpt dpt-type cemi-data)))
-                      (setf cemi-data dpt)
-                      (setf (cemi-data cemi) dpt))
-                    (log:info "Tunnelling ind 2: ~a -> ~a = ~a (~a)"
-                              addr-src-string ga-dest-string cemi-data label)))))
-             ((eql msc +cemi-mc-l_data.con+)
-              (log:debug "Tunnelling confirmation.")))
-           (progn
-             (log:debug "Notifying listeners of generic L_Data request...")
-             (dolist (listener-fun *tunnel-request-listeners*)
-               (ignore-errors
-                (funcall listener-fun received))))))
+         (%handle-tunnelling-request self received))
         (knx-tunnelling-ack
          (log:debug "Received tunnelling ack: ~a" received))
         (knx-disconnect-request
