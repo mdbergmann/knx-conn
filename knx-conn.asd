@@ -114,7 +114,7 @@ OK - supply ga->dpt mapping on knx-init
 OK - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (time-of-day), 11.001 (date)
 OK - extract receive-handlers to separate functions.
 - is response `T' or an error really good and allows a smooth mapping of values with read/write, etc.?
-- remove 'start-async-receive' flag, because it always needed to receive
+=> - remove 'start-async-receive' flag from public interface, because it always needed to receive. But keep internal.
 - remove use of *conn* and *local-host-and-port*
 - connstate (heartbeat): check for 3 failed requests
 - allow hooks to be registered for value updates on certain group-addresses

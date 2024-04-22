@@ -95,7 +95,6 @@
     (unwind-protect
          (progn
            (knx-conn-init "123.23.45.21"
-                          :start-receive t
                           :enable-heartbeat nil)
            (is-true (await-cond 1.5
                       (eq ip-client::*conn* 'dummy)))
@@ -155,8 +154,7 @@
                  1.0)
                (knx-client::*default-heartbeat-interval-secs* .5))
            (knx-conn-init "12.23.34.45"
-                          :enable-heartbeat t
-                          :start-receive t)
+                          :enable-heartbeat t)
            (is-true (await-cond 1.0
                       (>= (length (invocations
                                    'knx-client:send-connection-state)) 1))))

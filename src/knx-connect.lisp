@@ -40,20 +40,18 @@
 ;; ---------------------------------
 
 (defun knx-conn-init (host &key (port 3671)
-                             (start-receive t)
                              (enable-heartbeat t)
                              (tunnel-request-listeners nil)
                              (group-address-dpt-mapping nil))
   "Initialize and setup the KNX connection and other internal structures.
 It will make an UDP connection to KNX/IP gateway and establish a tunnelling connection.
 
-`host' is the IP address or hostname of the KNXnet/IP gateway.
-`port' is the port number of the KNXnet/IP gateway (default is 3671).
-`start-receive' is a boolean flag to start the async-receive loop (default is `T' because it's always needed).
-`enable-heartbeat' is a boolean flag to enable the heartbeat mechanism (default is `T').
-This can be `NIL' only for short time window. Usually the KNXnet/IP gateway wants to have a heartbeat at most every 2 minutes. or it will drop the connection.
-`tunnel-request-listeners' is a list of functions that will be called when a tunnelling request (L_Data.ind) is received. The function takes a single argument, the request object (`tunnelling:knx-tunnelling-request'). It is the responsibility of the listener function to filter the received requests.
-`group-address-dpt-mapping' is a list of group-address to DPT type mappings. The DPT type is used to parse the received data for the group-address. See `knx-client:*group-address-dpt-mapping*' for more information on the data structure. It is possible to also set, or modify the mapping during runtime via the variable directly. Note that this mapping is used for parsing the right DPT type for received L_Data.ind tunnelling requests so that a properly dpt-parsed request can be passed to the tunnel request listeners. If there is no mapping, or tunnelling requests are received that are not in the mapping, the requests will be passed to the listeners with raw data cemi data."
+- `host` is the IP address or hostname of the KNXnet/IP gateway.
+- `port` is the port number of the KNXnet/IP gateway (default is 3671).
+- `enable-heartbeat` is a boolean flag to enable the heartbeat mechanism (default is `T`).
+This can be `NIL` only for short time window. Usually the KNXnet/IP gateway wants to have a heartbeat at most every 2 minutes. or it will drop the connection.
+- `tunnel-request-listeners` is a list of functions that will be called when a tunnelling request (L_Data.ind) is received. The function takes a single argument, the request object (`tunnelling:knx-tunnelling-request`). It is the responsibility of the listener function to filter the received requests.
+- `group-address-dpt-mapping` is a list of group-address to DPT type mappings. The DPT type is used to parse the received data for the group-address. See `knx-client:*group-address-dpt-mapping*` for more information on the data structure. It is possible to also set, or modify the mapping during runtime via the variable directly. Note that this mapping is used for parsing the right DPT type for received L_Data.ind tunnelling requests so that a properly dpt-parsed request can be passed to the tunnel request listeners. If there is no mapping, or tunnelling requests are received that are not in the mapping, the requests will be passed to the listeners with raw data cemi data."
   (log:info "Initializing KNX...")
   (unless (ip-connect host port)
     (error "Could not connect to KNX/IP"))
@@ -66,9 +64,9 @@ This can be `NIL' only for short time window. Usually the KNXnet/IP gateway want
     (dolist (listener-fun tunnel-request-listeners)
       (add-tunnelling-request-listener listener-fun)))
   (setf *group-address-dpt-mapping* group-address-dpt-mapping)
-  (when start-receive
-    (log:info "Starting async-receive...")
-    (start-async-receive))
+  (log:info "Starting async-receive...")
+  (start-async-receive)
+  (log:info "Establishing tunnel connection...")
   (fawait (establish-tunnel-connection enable-heartbeat) :timeout 5)
   (unless (tunnel-connection-established-p)
     (error "Could not establish tunnel connection!")))
@@ -160,7 +158,6 @@ It allows `body` to perform operations on the KNX connection, i.e. `write-value'
   `(unwind-protect
         (progn
           (knx-conn-init ,host :port ,port
-                               :start-receive t
                                :enable-heartbeat nil)
           ,@body)
      (knx-conn-destroy)))
