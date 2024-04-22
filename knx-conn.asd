@@ -112,7 +112,11 @@ OK - toggle dpt1
 OK - allow a mapping from ga to dpt type for parsing.
 OK - supply ga->dpt mapping on knx-init
 OK - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (time-of-day), 11.001 (date)
+<<<<<<< HEAD
 OK - extract receive-handlers to separate functions.
+=======
+=> - extract receive-handlers to separate functions.
+>>>>>>> 0ca3cba (dpt11 ok)
 - is response `T' or an error really good and allows a smooth mapping of values with read/write, etc.?
 - remove 'start-async-receive' flag, because it always needed to receive
 - remove use of *conn* and *local-host-and-port*
