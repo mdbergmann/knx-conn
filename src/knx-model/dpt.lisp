@@ -195,7 +195,6 @@ Range:      b = {0 = off, 1 = on}"
 `VALUE-SYM' can be:
 - `:scaling' or `dpt-5.001'
 - `:count' or `dpt-5.010'."
-  (declare (octet value))
   (check-type value octet)
   (ecase (%named-value-sym-for-dpt-sym value-sym)
     (:scaling
@@ -300,7 +299,6 @@ Encoding:   Float Value = (0.01 * M)*2(E)
 Range:      [-273 .. 670760.96]
 Unit:       °C
 Resolution: 0.01 °C"
-  (declare (float value))
   (log:debug "Value for DPT9.001: ~a" value)
   (let* ((scaled-value (* 100 value))
          (value-negative (minusp scaled-value))
@@ -333,7 +331,7 @@ Resolution: 0.01 °C"
 (defun make-dpt9 (value-sym value)
   "9.001 Temperature (°C)
 `VALUE-SYM' can be `:temperature' for 9.001."
-  (declare (float value))
+  (check-type value float)
   (ecase (%named-value-sym-for-dpt-sym value-sym)
     (:temperature
      (%with-bounds-check
