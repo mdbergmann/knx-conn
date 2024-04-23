@@ -22,7 +22,7 @@ Currently only tunnelling is supported.
 
 Implemented DPTs: `dpt-1.001`, `dpt-5.001`, `dpt-5.010`, `dpt-9.001`, `dpt-10.001`, `dpt-11.001`. More are on the todo list (pull-requests welcome).
 
-### Establish tunnel connection
+### Establish a tunnel connection
 
 The user facing package is: `knxc` (`knx-connect`).
 
@@ -48,7 +48,7 @@ The byte array is used unless the DPT for individual GAs (group-addresses) is kn
     ("1/2/3" dpt:dpt-1.001 "foobar")))
 ```
 
-This is a list of lists containing of three elements:
+This is a list of lists containing three elements:
 
 1. the GA
 2. the dpt
@@ -60,14 +60,14 @@ The list can be deployed via `knx-conn-init` as parameter, or it can be set and 
 (setf knx-client:*group-address-dpt-mapping* *dpt-map*)
 ```
 
-From that moment all data indications are check for if there exists a mapping so that the DPT can be parsed properly. I.e.:
+From that moment all data indications are checked for if there exists a mapping so that the DPT can be parsed properly. I.e.:
 
 ```
  <INFO> [21:59:18] knx-conn.knx-client file77Nnnx (%async-handler-knx-received) - Tunnelling ind 1: 13.13.255 -> 3/0/0 = #(85 59 18)
  <INFO> [21:59:18] knx-conn.knx-client file77Nnnx (%async-handler-knx-received) - Tunnelling ind 2: 13.13.255 -> 3/0/0 = #S(DPT10 :VALUE-TYPE DPT-10.001 :RAW-VALUE #(85 59 18) :VALUE 2024-04-23T21:59:18.404282+02:00) (time-of-day)
 ```
 
-### read requests
+### Read requests
 
 Is it possible to request reading a value from a GA by:
 
@@ -89,7 +89,7 @@ KNX-CONNECT> (fcompleted
 Temperature outside: 6.5
 ```
 
-### write requests
+### Write requests
 
 It is also possible to send write requests to GAs in order to change state/values. I.e. to toggle a light or so. This can be done like so:
 
@@ -110,6 +110,7 @@ T
 This uses a blocking alternative to `fcompleted`. `fawait` waits for the resolution of the `future` by `:timeout` seconds at most.
 
 
+### Cleaning up
 
 Disconnect and stop everything is done with:
 
