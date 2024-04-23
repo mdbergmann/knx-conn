@@ -115,6 +115,7 @@ OK - more dpts: 5.001 (Stellgröße), 5.010 (Betriebsmodus), 10.001 (time-of-day
 OK - extract receive-handlers to separate functions.
 - is response `T' or an error really good and allows a smooth mapping of values with read/write, etc.?
 OK - remove 'start-async-receive' flag from public interface, because it always needed to receive. But keep internal.
+=> - support the implemented dpts in 'write-value'
 - remove use of *conn* and *local-host-and-port*
 - connstate (heartbeat): check for 3 failed requests
 - allow hooks to be registered for value updates on certain group-addresses

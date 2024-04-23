@@ -18,7 +18,7 @@ This project provides KNXnet/IP support for Common Lisp.
 
 ## What works
 
-Currently only tunnelling is supported.
+Currently tunnelling is supported, routing is not
 
 Implemented DPTs: `dpt-1.001`, `dpt-5.001`, `dpt-5.010`, `dpt-9.001`, `dpt-10.001`, `dpt-11.001`. More are on the todo list (pull-requests welcome).
 
