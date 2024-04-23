@@ -22,6 +22,8 @@ Currently only tunnelling is supported.
 
 Implemented DPTs: `dpt-1.001`, `dpt-5.001`, `dpt-5.010`, `dpt-9.001`, `dpt-10.001`, `dpt-11.001`. More are on the todo list (pull-requests welcome).
 
+### Establish tunnel connection
+
 The user facing package is: `knxc` (`knx-connect`).
 
 In order to establish a tunnel connection one can do (in package `knxc`):
@@ -40,7 +42,7 @@ Which shows the device (individual address) issuing a state change and the targe
 
 The byte array is used unless the DPT for individual GAs (group-addresses) is known. To provide a mapping for GA->DPT one can setup such a list:
 
-```
+```lisp
 (defparameter *dpt-map*
   '(("3/0/0" dpt:dpt-10.001 "time-of-day")
     ("1/2/3" dpt:dpt-1.001 "foobar")))
@@ -54,7 +56,7 @@ This is a list of lists containing of three elements:
 
 The list can be deployed via `knx-conn-init` as parameter, or it can be set and ammended later by setting it to:
 
-```
+```lisp
 (setf knx-client:*group-address-dpt-mapping* *dpt-map*)
 ```
 
@@ -64,6 +66,49 @@ From that moment all data indications are check for if there exists a mapping so
  <INFO> [21:59:18] knx-conn.knx-client file77Nnnx (%async-handler-knx-received) - Tunnelling ind 1: 13.13.255 -> 3/0/0 = #(85 59 18)
  <INFO> [21:59:18] knx-conn.knx-client file77Nnnx (%async-handler-knx-received) - Tunnelling ind 2: 13.13.255 -> 3/0/0 = #S(DPT10 :VALUE-TYPE DPT-10.001 :RAW-VALUE #(85 59 18) :VALUE 2024-04-23T21:59:18.404282+02:00) (time-of-day)
 ```
+
+### read requests
+
+Is it possible to request reading a value from a GA by:
+
+```lisp
+(fcompleted 
+    (request-value "3/2/0" 'dpt:dpt-9.001)
+    (result)
+  (format t "Temperature outside: ~a~%" result))
+```
+
+The `request-value` call returns a `future`, because the retrieval of the value happens asynchronously. When the future is resolved `result` is populated and the handler form is called, which here just prints the received value.
+
+```
+KNX-CONNECT> (fcompleted 
+                 (request-value "3/2/0" 'dpt:dpt-9.001)
+                 (result)
+               (format t "Temperature outside: ~a~%" result))
+#<FUTURE promise: #<PROMISE finished: NIL errored: NIL forward: NIL #x302003B3CC1D>>
+Temperature outside: 6.5
+```
+
+### write requests
+
+It is also possible to send write requests to GAs in order to change state/values. I.e. to toggle a light or so. This can be done like so:
+
+```lisp
+(write-value "0/0/4" 'dpt:dpt-1.001 t)
+```
+
+The `T` here means 'switch on' the light. `NIL` would switch it off.  
+Again `write-value` returns `future`.
+
+```
+KNX-CONNECT> (fawait (write-value "0/0/4" 'dpt:dpt-1.001 t)
+                     :timeout 1.0)
+T
+#<FUTURE promise: #<PROMISE finished: T errored: NIL forward: NIL #x302003D321DD>>
+```
+
+This uses a blocking alternative to `fcompleted`. `fawait` waits for the resolution of the `future` by `:timeout` seconds at most.
+
 
 
 Disconnect and stop everything is done with:
