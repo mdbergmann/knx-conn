@@ -10,8 +10,6 @@
 
 (in-package :knx-conn.knx-connect)
 
-(defparameter *knx-if* "192.168.50.41")
-
 (defvar *asys* nil
   "The actor system used for async communication.")
 

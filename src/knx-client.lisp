@@ -390,7 +390,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
                      (ga-dest (cemi-destination-addr cemi))
                      (ga-dest-string (address-string-rep ga-dest))
                      (cemi-data (cemi-data cemi)))
-                (log:debug "Tunnelling ind 1: ~a -> ~a = ~a"
+                (log:info "Tunnelling ind 1: ~a -> ~a = ~a"
                            addr-src-string ga-dest-string cemi-data)
                 (when-let* ((mapping-data *group-address-dpt-mapping*)
                             (cemi-data-bytes (when (arrayp cemi-data)
