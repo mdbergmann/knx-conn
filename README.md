@@ -24,10 +24,10 @@ Implemented DPTs: `dpt-1.001`, `dpt-5.001`, `dpt-5.010`, `dpt-9.001`, `dpt-10.00
 
 The user facing package is: `knxc` (`knx-connect`).
 
-In order to establish a tunnel connection one can do (in `knxc`):
+In order to establish a tunnel connection one can do (in package `knxc`):
 
 ```lisp
-(knx-conn-init "192.168.50.123") ;; hostname ot IP address of your KNXnet router/interface
+(knx-conn-init "192.168.50.123") ;; hostname or IP address of your KNXnet router/interface
 ```
 
 Depending on the log level (log4cl) the logging can be a bit noisy (in `:debug`). It is possible to switch to `:info` level using: `(log:config '(knx-conn) :info)`. This should reduce the logging to just 'L_Data.ind', the data change indications. Like:
@@ -36,8 +36,34 @@ Depending on the log level (log4cl) the logging can be a bit noisy (in `:debug`)
 <INFO> [21:43:18] knx-conn.knx-client file77Nnnx (%async-handler-knx-received) - Tunnelling ind 1: 13.13.255 -> 3/0/0 = #(85 43 18)
 ```
 
-Which shows the device (individual address) and the target (group-address) plus the value as byte array.
+Which shows the device (individual address) issuing a state change and the target (group-address) plus the value as byte array.
 
+The byte array is used unless the DPT for individual GAs (group-addresses) is known. To provide a mapping for GA->DPT one can setup such a list:
+
+```
+(defparameter *dpt-map*
+  '(("3/0/0" dpt:dpt-10.001 "time-of-day")
+    ("1/2/3" dpt:dpt-1.001 "foobar")))
+```
+
+This is a list of lists containing of three elements:
+
+1. the GA
+2. the dpt
+3. a label
+
+The list can be deployed via `knx-conn-init` as parameter, or it can be set and ammended later by setting it to:
+
+```
+(setf knx-client:*group-address-dpt-mapping* *dpt-map*)
+```
+
+From that moment all data indications are check for if there exists a mapping so that the DPT can be parsed properly. I.e.:
+
+```
+ <INFO> [21:59:18] knx-conn.knx-client file77Nnnx (%async-handler-knx-received) - Tunnelling ind 1: 13.13.255 -> 3/0/0 = #(85 59 18)
+ <INFO> [21:59:18] knx-conn.knx-client file77Nnnx (%async-handler-knx-received) - Tunnelling ind 2: 13.13.255 -> 3/0/0 = #S(DPT10 :VALUE-TYPE DPT-10.001 :RAW-VALUE #(85 59 18) :VALUE 2024-04-23T21:59:18.404282+02:00) (time-of-day)
+```
 
 
 Disconnect and stop everything is done with:
