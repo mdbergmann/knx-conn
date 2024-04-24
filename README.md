@@ -107,7 +107,7 @@ T
 #<FUTURE promise: #<PROMISE finished: T errored: NIL forward: NIL #x302003D321DD>>
 ```
 
-This uses a blocking alternative to `fcompleted`. `fawait` waits for the resolution of the `future` by `:timeout` seconds at most.
+This uses a blocking alternative to `fcompleted`. `fawait` waits for the resolution of the `future` by `:timeout` seconds at most. The return of `fawait` is a `values` of `T` in case of success or a condition in case of error. The second value is always the future for reference.
 
 
 ### Cleaning up

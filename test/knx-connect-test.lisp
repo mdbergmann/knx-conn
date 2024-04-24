@@ -197,6 +197,25 @@
     (is-false ip-client::*conn*)
     (is-false knx-client::*channel-id*)))
 
+(test with-knx/ip--write-value--supported-dpt-types
+  (setf *test-tunnelling-request-receive* (make-test-tunnelling-ack))
+  (with-fixture request-value (0 t)
+    (with-knx/ip ("12.23.34.45" :port 1234)
+      (let ((dpts `((dpt:dpt-1.001 . nil)
+                    (dpt:dpt-5.001 . 54)
+                    (dpt:dpt-5.010 . 123)
+                    (dpt:dpt-9.001 . 23.5)
+                    (dpt:dpt-10.001 . ,(local-time:now))
+                    (dpt:dpt-11.001 . ,(local-time:today)))))
+        (is-true (notany #'null
+                         (mapcar (lambda (dpt-vals)
+                                   (let ((dpt-type (car dpt-vals))
+                                         (val (cdr dpt-vals)))
+                                     (fawait
+                                      (write-value "1/2/3" dpt-type val)
+                                      :timeout 5)))
+                                 dpts)))))))
+
 (test with-knx/ip--write-value--err-no-ack
   (with-fixture request-value (0 t)
     (with-knx/ip ("12.23.34.45" :port 1234)

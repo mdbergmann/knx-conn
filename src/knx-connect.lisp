@@ -91,13 +91,26 @@ This can be `NIL` only for short time window. Usually the KNXnet/IP gateway want
 (defun write-value (group-address dpt-type value)
   "Write the given `value` to the `group-address` with the given `dpt-type`.
 Returns `future:future` which resolves to `T' is all went well and error condition on error."
+  (assert (dpt:dpt-value-type-p dpt-type) nil "Unsupported dpt type!")
   (log:info "Writing value: ~a (~a) to ga: ~a" value dpt-type group-address)
   (fmap
       (send-write-request
        (address:make-group-address group-address)
        (cond
          ((eq dpt-type 'dpt:dpt-1.001)
-          (dpt:make-dpt1 dpt-type (if value :on :off)))))
+          (dpt:make-dpt1 dpt-type (if value :on :off)))
+         ((eq dpt-type 'dpt:dpt-5.001)
+          (dpt:make-dpt5 dpt-type value))
+         ((eq dpt-type 'dpt:dpt-5.010)
+          (dpt:make-dpt5 dpt-type value))
+         ((eq dpt-type 'dpt:dpt-9.001)
+          (dpt:make-dpt9 dpt-type value))
+         ((eq dpt-type 'dpt:dpt-10.001)
+          (dpt:make-dpt10 value))
+         ((eq dpt-type 'dpt:dpt-11.001)
+          (dpt:make-dpt11 value))
+         (t
+          (error "Unsupported dpt!"))))
       (result)
     (destructuring-bind (resp err) result
         (if resp t err))))

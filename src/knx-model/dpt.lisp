@@ -11,6 +11,8 @@
            #:value-type-string-to-symbol
            #:dpt-byte-len
            #:dpt-supports-optimized-p
+           #:named-value-sym-for-dpt-sym
+           #:dpt-value-type-p
            #:parse-to-dpt
            ;; dpt1
            #:dpt1
@@ -57,7 +59,8 @@
     (:date . dpt-11.001)
     ))
 
-(defun %named-value-sym-for-dpt-sym (sym)
+(defun named-value-sym-for-dpt-sym (sym)
+  "Returns the named value symbol, i.e. `:switch` for `dpt-1.001`."
   (car (or
         (find sym
               *dpt-supported-value-types* :test #'eq :key #'cdr)
@@ -162,7 +165,7 @@ Range:      b = {0 = off, 1 = on}"
 
 (defun make-dpt1 (value-sym value)
   "supported `value-sym': `(or :switch 'dpt-1.001)` as switch with `:on` or `:off` values."
-  (ecase (%named-value-sym-for-dpt-sym value-sym)
+  (ecase (named-value-sym-for-dpt-sym value-sym)
     (:switch
         (%make-dpt1 :value-type 'dpt-1.001
                     :value value
@@ -196,7 +199,7 @@ Range:      b = {0 = off, 1 = on}"
 - `:scaling' or `dpt-5.001'
 - `:count' or `dpt-5.010'."
   (check-type value octet)
-  (ecase (%named-value-sym-for-dpt-sym value-sym)
+  (ecase (named-value-sym-for-dpt-sym value-sym)
     (:scaling
      (%with-bounds-check
          (lambda () (<= 0 value 100))
@@ -219,6 +222,9 @@ Range:      b = {0 = off, 1 = on}"
 
 (defmethod to-byte-seq ((dpt dpt5))
   (dpt5-raw-value dpt))
+
+(defmethod dpt-supports-optimized-p ((dpt dpt5))
+  nil)
 
 (defmethod parse-to-dpt ((value-type (eql 'dpt-5.001)) byte-vec)
   (%assert-byte-vec value-type byte-vec 1)
@@ -332,7 +338,7 @@ Resolution: 0.01 °C"
   "9.001 Temperature (°C)
 `VALUE-SYM' can be `:temperature' for 9.001."
   (check-type value float)
-  (ecase (%named-value-sym-for-dpt-sym value-sym)
+  (ecase (named-value-sym-for-dpt-sym value-sym)
     (:temperature
      (%with-bounds-check
          (lambda () (<= -273.0 value 670760.96))
