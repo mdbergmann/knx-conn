@@ -131,7 +131,7 @@ Sometimes the use case is to read a value from a GA, do some logic and write a n
                  (:off t))))
 ```
 
-This is fully asynchronous. The future of `request-value` is mapped to `write-value`. The result of `fmap` is again a future.
+This will toggle the state of a light and is fully asynchronous. The future of `request-value` is mapped to `write-value`. The result of `fmap` is again a future.
 
 The api may still be subject of change.
 
