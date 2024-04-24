@@ -387,8 +387,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
          (log:debug "Tunnelling ind 1: ~a -> ~a = ~a"
                     addr-src-string ga-dest-string cemi-data)
          (when-let* ((mapping-data *group-address-dpt-mapping*)
-                     (cemi-data-bytes (when (arrayp cemi-data)
-                                        cemi-data))
+                     (cemi-data-bytes (when (arrayp cemi-data) cemi-data))
                      (dpt-mapping (find
                                    ga-dest-string mapping-data
                                    :key #'car
