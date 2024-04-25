@@ -2,6 +2,7 @@
   :version "0.1.0"
   :author "Manfred Bergmann"
   :license "GNU GPL, version 3"
+  :description "KNXnet/IP implementation in Common Lisp"
   :depends-on ("alexandria"
                "usocket"
                "babel"
