@@ -142,7 +142,8 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
         *default-response-wait-timeout-secs*)
   (setf *group-address-dpt-mapping* nil)
   (setf *awaited-things*
-        (make-hash-table :test #'eq)))
+        (make-hash-table :test #'eq))
+  t)
 
 (defun %assert-channel-id ()
   (assert (integerp *channel-id*)

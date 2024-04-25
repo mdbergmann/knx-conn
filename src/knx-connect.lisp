@@ -30,7 +30,7 @@
 (defun %shutdown-asys ()
   (log:info "Shutting down actor system...")
   (when *asys*
-    (ac:shutdown *asys* :wait t)
+    (ac:shutdown *asys* :wait nil)
     (setf *asys* nil)))
 
 ;; ---------------------------------
