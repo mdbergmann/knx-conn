@@ -137,10 +137,43 @@ For more info on futures have a look here (except `fawait` which is not in there
 
 The api may still be subject of change.
 
-### Deploying custom listeners
+### Custom L_Data listeners
 
+It is possible to register custom listeners to get notified for change events coming from the bus.
 
+I.e. suppose you want to get notified when a certain device state changed. Let's define the listener function:
 
+```lisp
+(defun room-xyz-light-listener (req)
+  (let ((message-code
+          (tunnelling-cemi-message-code req)))
+    (when (eql message-code +cemi-mc-l_data.ind+)
+      (let* ((cemi (tunnelling-request-cemi req))
+             (ga-str (address-string-rep 
+                      (cemi-destination-addr cemi))))
+        (when (string= "0/0/4" ga-str)
+          (format t "received event for light in room xyz: ~a~%" req)
+          (terpri))))))
+```
+
+The listener function takes one argument which is the received tunnelling request object (`knx-tunnelling-request`). The listener function filters for an `L_Data.ind` message code and for a specific destination group-address (GA), "0/0/4" here, which is a specific light in room xyz.  
+The manual filtering is a bit combersome and some laters versions might improve on that, but it works.
+
+Now the listener function must be registered. There are two ways to do this:
+
+1. the `knx-conn-init` allows to specify a list of listener functions up-front via parameter
+2. after initialization of `knx-conn-init` register each listener function via `add-tunnelling-request-listener like so:
+
+```lisp
+(knx-client:add-tunnelling-request-listener
+  #'room-xyz-light-listener)
+```
+
+Once done and the listener function receives such a message this listener code dumps the request message:
+
+```
+received event for light in room xyz: #S(KNX-TUNNELLING-REQUEST :HEADER #S(KNX-HEADER :LEN 6 :KNXNETIP-VERSION 16 :TYPE 1056 :BODY-LEN 15) :CONN-HEADER #S(CONNECTION-HEADER :LEN 4 :CHANNEL-ID 79 :SEQ-COUNTER 132 :RESERVED 0) :CEMI #S(CEMI-L-DATA :MESSAGE-CODE 41 :INFO-LEN 0 :ADDITIONAL-INFO NIL :CTRL1 #*10111100 :CTRL2 #*11010000 :SOURCE-ADDR #S(KNX-INDIVIDUAL-ADDRESS :ADDR #(19 14) :STRING-REP 1.3.14) :DESTINATION-ADDR #S(KNX-GROUP-ADDRESS :ADDR #(0 4) :STRING-REP 0/0/4) :NPDU-LEN 1 :TPCI 0 :PACKET-NUM 0 :APCI #S(APCI-GV-WRITE :START-CODE 128 :MASK 191) :DATA #(0)))
+```
 
 
 ### Cleaning up
