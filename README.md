@@ -133,7 +133,14 @@ Sometimes the use case is to read a value from a GA, do some logic and write a n
 
 This will toggle the state of a light and is fully asynchronous. The future of `request-value` is mapped to `write-value`. The result of `fmap` is again a future.
 
+For more info on futures have a look here (except `fawait` which is not in there yet): [Futures API](https://mdbergmann.github.io/cl-gserver/index.html#SENTO.FUTURE:@FUTURE%20MGL-PAX:SECTION).
+
 The api may still be subject of change.
+
+### Deploying custom listeners
+
+
+
 
 
 ### Cleaning up
