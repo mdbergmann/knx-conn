@@ -156,13 +156,13 @@ I.e. suppose you want to get notified when a certain device state changed. Let's
           (terpri))))))
 ```
 
-The listener function takes one argument which is the received tunnelling request object (`knx-tunnelling-request`). The listener function filters for an `L_Data.ind` message code and for a specific destination group-address (GA), "0/0/4" here, which is a specific light in room xyz.  
+The listener function takes one argument which is the received tunnelling request object (`knx-tunnelling-request`). This listener function implementation filters for an `L_Data.ind` message code and for a specific destination group-address (GA), "0/0/4" here, which is a specific light in room xyz.  
 The manual filtering is a bit combersome and some laters versions might improve on that, but it works.
 
 Now the listener function must be registered. There are two ways to do this:
 
 1. the `knx-conn-init` allows to specify a list of listener functions up-front via parameter
-2. after initialization of `knx-conn-init` register each listener function via `add-tunnelling-request-listener like so:
+2. after initialization of `knx-conn-init` register each listener function via `add-tunnelling-request-listener` like so:
 
 ```lisp
 (knx-client:add-tunnelling-request-listener
