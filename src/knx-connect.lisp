@@ -99,9 +99,8 @@ Returns `future:future` which resolves to `T' is all went well and error conditi
        (cond
          ((eq dpt-type 'dpt:dpt-1.001)
           (dpt:make-dpt1 dpt-type (if value :on :off)))
-         ((eq dpt-type 'dpt:dpt-5.001)
-          (dpt:make-dpt5 dpt-type value))
-         ((eq dpt-type 'dpt:dpt-5.010)
+         ((or (eq dpt-type 'dpt:dpt-5.001)
+              (eq dpt-type 'dpt:dpt-5.010))
           (dpt:make-dpt5 dpt-type value))
          ((eq dpt-type 'dpt:dpt-9.001)
           (dpt:make-dpt9 dpt-type value))
