@@ -1,7 +1,7 @@
 (defsystem "knx-conn"
   :version "0.1.0"
   :author "Manfred Bergmann"
-  :license "Apache-2"
+  :license "GNU GPL, version 3"
   :depends-on ("alexandria"
                "usocket"
                "babel"
