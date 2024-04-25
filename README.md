@@ -178,7 +178,7 @@ received event for light in room xyz: #S(KNX-TUNNELLING-REQUEST :HEADER #S(KNX-H
 
 ### Cleaning up
 
-Disconnect and stop everything is done with:
+Disconnect and stop everything and clean up resources is done with:
 
 ```
 (knx-conn-destroy)
