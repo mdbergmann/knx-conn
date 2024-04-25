@@ -20,10 +20,12 @@ It is currently still considered alpha/beta. Some interfaces may still change.
 
 ## What works
 
-Currently tunnelling is supported, routing is not
+Currently tunnelling is supported, routing is not.
 
 Implemented DPTs: `dpt-1.001`, `dpt-5.001`, `dpt-5.010`, `dpt-9.001`, `dpt-10.001`, `dpt-11.001`.  
 More are on the todo list (pull-requests welcome).
+
+Tested under SBCL 2.4.3 and CCL 1.12.2
 
 ### Establish a tunnel connection
 
