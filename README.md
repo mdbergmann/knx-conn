@@ -177,6 +177,8 @@ Once done and the listener function receives such a message this listener code d
 received event for light in room xyz: #S(KNX-TUNNELLING-REQUEST :HEADER #S(KNX-HEADER :LEN 6 :KNXNETIP-VERSION 16 :TYPE 1056 :BODY-LEN 15) :CONN-HEADER #S(CONNECTION-HEADER :LEN 4 :CHANNEL-ID 79 :SEQ-COUNTER 132 :RESERVED 0) :CEMI #S(CEMI-L-DATA :MESSAGE-CODE 41 :INFO-LEN 0 :ADDITIONAL-INFO NIL :CTRL1 #*10111100 :CTRL2 #*11010000 :SOURCE-ADDR #S(KNX-INDIVIDUAL-ADDRESS :ADDR #(19 14) :STRING-REP 1.3.14) :DESTINATION-ADDR #S(KNX-GROUP-ADDRESS :ADDR #(0 4) :STRING-REP 0/0/4) :NPDU-LEN 1 :TPCI 0 :PACKET-NUM 0 :APCI #S(APCI-GV-WRITE :START-CODE 128 :MASK 191) :DATA #(0)))
 ```
 
+!!! Beware that the listener function is executed by the thread that is responsible for handling received bus tunnelling requests. It should not be blocked, keep it light, or hand the work over to another thread context. I.e. via Sento Tasks API.
+
 
 ### Cleaning up
 
