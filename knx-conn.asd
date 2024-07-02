@@ -8,7 +8,8 @@
                "babel"
                "log4cl"
                "binding-arrows"
-               "sento")
+               "sento"
+               "local-time")
   :components ((:module "src"
                 :serial t
                 :components
