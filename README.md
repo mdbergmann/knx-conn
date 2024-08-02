@@ -29,7 +29,7 @@ Tested under SBCL 2.4.3 and CCL 1.12.2
 
 ### Establish a tunnel connection
 
-In order to use all this one has to establish a 'tunnel' connection to the bus. This works by connecting via UDP protocol to a KNXnet/IP gateway/router in tunnel mode. When the connection is established it will be possible to listen on bus events read or write values from/to GAs.
+In order to use all this one has to establish a 'tunnel' connection to the bus. This works by connecting via UDP protocol to a KNXnet/IP gateway/router in tunnel mode. When the connection is established it will be possible to listen on bus events, read or write values from/to GAs.
 
 *Let's see how this works:*
 
