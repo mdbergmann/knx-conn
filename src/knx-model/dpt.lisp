@@ -14,6 +14,7 @@
            #:named-value-sym-for-dpt-sym
            #:dpt-value-type-p
            #:parse-to-dpt
+           #:make-dpt
            ;; dpt1
            #:dpt1
            #:dpt1-p
@@ -124,6 +125,24 @@ I.e. the value for switches, dimmers, temperature sensors, etc. are all encoded 
     (error 'knx-unable-to-parse
            :format-control (format nil "Byte vector must be of length ~a" len)
            :format-arguments (list value-type))))
+
+(defun make-dpt (dpt-type value)
+  "Converts `value' to `dpt' based on `dpt-type'.
+For `dpt:dpt-1.001 we require `T', or `NIL'."
+  (cond
+    ((eq dpt-type 'dpt:dpt-1.001)
+     (dpt:make-dpt1 dpt-type (if value :on :off)))
+    ((or (eq dpt-type 'dpt:dpt-5.001)
+         (eq dpt-type 'dpt:dpt-5.010))
+     (dpt:make-dpt5 dpt-type value))
+    ((eq dpt-type 'dpt:dpt-9.001)
+     (dpt:make-dpt9 dpt-type value))
+    ((eq dpt-type 'dpt:dpt-10.001)
+     (dpt:make-dpt10 value))
+    ((eq dpt-type 'dpt:dpt-11.001)
+     (dpt:make-dpt11 value))
+    (t
+     (error "Unsupported dpt!"))))
 
 ;; ------------------------------
 ;; DPT1
