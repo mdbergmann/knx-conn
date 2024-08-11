@@ -4,6 +4,7 @@
   (:export #:knx-connect-request
            #:make-connect-request
            #:knx-connect-response
+           #:make-connect-response
            #:connect-response-channel-id
            #:connect-response-status
            #:connect-response-crd
@@ -71,6 +72,14 @@ KNXnet/IP body
      :hpai-data-endpoint data-hpai
      :cri cri)))
 
+(defmethod parse-to-obj ((obj-type (eql +knx-connect-request+)) header body)
+  (%make-connect-request
+   :header header
+   :hpai-ctrl-endpoint (parse-hpai (subseq body 0 8))
+   :hpai-data-endpoint (parse-hpai (subseq body 8 16))
+   :cri (make-tunneling-cri) ;; fake, we don't send this as client. For server this has to be implemented proper
+   ))
+
 (defmethod to-byte-seq ((obj knx-connect-request))
   (concatenate '(vector octet)
                (call-next-method obj)
@@ -124,6 +133,17 @@ KNXnet/IP body
                        (connect-response-status obj))
                (to-byte-seq (connect-response-hpai obj))
                (to-byte-seq (connect-response-crd obj))))
+
+(defun make-connect-response (channel-id hostname port)
+  (let ((hpai (make-hpai hostname port))
+        (crd (make-crd "1.2.3")))
+    (%make-connect-response
+     :header (make-header +knx-connect-response+
+                          (+ 2 (hpai-len hpai) (crd-len crd)))
+     :channel-id channel-id
+     :status +connect-status-no-error+
+     :hpai hpai
+     :crd crd)))
 
 ;; -----------------------------
 ;; knx disconnect request

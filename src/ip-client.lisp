@@ -60,6 +60,7 @@
   (let ((conn *conn*))
     (assert conn nil "Not connected!")
     (let ((buf (make-array 256 :element-type 'octet)))
+      (log:debug "Receiving...")
       (handler-case 
           (let ((received-obj
                   (parse-root-knx-object

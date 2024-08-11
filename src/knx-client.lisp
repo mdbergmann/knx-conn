@@ -506,7 +506,7 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
          (%async-handler-knx-heartbeat))
         ;; tunnel-req-listener management
         (:add-tunnel-req-listener
-         (push args *tunnel-request-listeners*))
+         (pushnew args *tunnel-request-listeners* :test #'eq))
         (:rem-tunnel-req-listener
          (setf *tunnel-request-listeners*
                (remove args *tunnel-request-listeners*)))

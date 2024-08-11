@@ -3,6 +3,7 @@
   (:nicknames :crd)
   (:export #:crd
            #:make-crd
+           #:crd-len
            #:crd-individual-address
            #:parse-crd
            ))
@@ -10,6 +11,7 @@
 (in-package :knx-conn.crd)
 
 (defconstant +structure-len+ #x04)
+(defconstant +conn-type-tunnel+ #x04)
 
 (defstruct (crd (:include knx-obj)
                 (:constructor %make-crd)
@@ -33,3 +35,14 @@
              :conn-type (aref pkg-data 1)
              :individual-address (parse-individual-address
                                   (subseq pkg-data 2 4))))
+
+(defmethod to-byte-seq ((crd crd))
+  (concatenate '(vector octet)
+               (vector (crd-len crd)
+                       (crd-conn-type crd))
+               (to-byte-seq (crd-individual-address crd))))
+
+(defun make-crd (individual-address)
+  "`individual-address' as string in form '1.2.3'"
+  (%make-crd :conn-type +conn-type-tunnel+
+             :individual-address (make-individual-address individual-address)))
