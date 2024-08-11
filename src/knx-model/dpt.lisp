@@ -239,6 +239,9 @@ Range:      b = {0 = off, 1 = on}"
 (defmethod dpt-value ((dpt dpt5))
   (dpt5-value dpt))
 
+(defmethod dpt-raw-value ((dpt dpt5))
+  (dpt5-raw-value dpt))
+
 (defmethod to-byte-seq ((dpt dpt5))
   (dpt5-raw-value dpt))
 
