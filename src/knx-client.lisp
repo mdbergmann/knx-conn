@@ -404,8 +404,10 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
       ((eql msc +cemi-mc-l_data.con+)
        (log:debug "Tunnelling confirmation.")))
     (progn
-      (log:debug "Notifying listeners of generic L_Data request...")
+      (log:debug "Notifying (~a) listeners of generic L_Data request..."
+                 (length *tunnel-request-listeners*))
       (dolist (listener-fun *tunnel-request-listeners*)
+        (log:debug "Funcalling ~a" listener-fun)
         (ignore-errors
          (funcall listener-fun received))))))
 
