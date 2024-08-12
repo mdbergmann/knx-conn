@@ -22,7 +22,7 @@
   (unless *asys*
     (log:info "Creating actor system...")
     (setf *asys* (asys:make-actor-system '(:dispatchers
-                                           (:shared (:workers 2)
+                                           (:shared (:workers 2 :strategy :round-robin)
                                             :receiver (:workers 1)
                                             :waiter (:workers 1)
                                             :read-request (:workers 1)))))))
@@ -30,7 +30,7 @@
 (defun %shutdown-asys ()
   (log:info "Shutting down actor system...")
   (when *asys*
-    (ac:shutdown *asys* :wait t)
+    (ac:shutdown *asys* :wait nil)
     (setf *asys* nil)))
 
 ;; ---------------------------------

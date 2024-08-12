@@ -533,13 +533,15 @@ In case of this the log must be checked."
 
 (test send-read-request--ack-timeout--send-second-request--ok
   (with-fixture env (nil t)
+    (setf *receive-knx-data-recur-delay-secs* 0.1)
     (setf knx-client::*channel-id* 78)
     (let ((send-count 0))
       (answer ip-client:ip-send-knx-data
         (incf send-count))
       (answer ip-client:ip-receive-knx-data
+        ;; flacky. Better respond with nil until 1 second is elapsed
         (cond
-          ((= send-count 1) (progn (sleep 0.7) nil))
+          ((= send-count 1) (progn (sleep 0.5) nil))
           ((= send-count 2) `(,(make-tunnelling-ack-2 78 0) nil))))
       (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1.0))
         (destructuring-bind (ack err)

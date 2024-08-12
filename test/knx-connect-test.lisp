@@ -84,7 +84,9 @@
       (unwind-protect
            (progn
              (&body))
-        (setf *test-tunnelling-request-receive* nil)))))
+        (setf *test-tunnelling-request-receive* nil
+              knx-client::*tunnel-ack-wait-timeout-secs*
+              knx-client::*default-response-wait-timeout-secs*)))))
 
 ;; --------------------------------------
 ;; initialize
@@ -219,7 +221,7 @@
 (test with-knx/ip--write-value--err-no-ack
   (with-fixture request-value (0 t)
     (with-knx/ip ("12.23.34.45" :port 1234)
-      (setf knx-client::*tunnel-ack-wait-timeout-secs* 1)
+      (setf knx-client::*tunnel-ack-wait-timeout-secs* 0)
       (is (typep 
            (fawait
             (write-value "1/2/3"

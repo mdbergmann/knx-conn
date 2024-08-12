@@ -62,7 +62,7 @@
 
 #|
 TODOs:
-- remove use of *conn* and *local-host-and-port*
+=> - tests for parsing tunnel-request
 - connstate (heartbeat): check for 3 failed requests
 - allow hooks to be registered for value updates on certain group-addresses
 - make nice DSL for the supported dpt types

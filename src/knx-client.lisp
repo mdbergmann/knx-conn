@@ -433,15 +433,20 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
             (setf (gethash received-type *awaited-things*) received-knxobj))))))
 
 (defun %async-handler-knx-wait (self sender wait-args)
+  (log:trace "Async handler knx wait...")
   (labels ((timeout-elapsed-p (start-time resp-wait-time)
              (let ((now (get-universal-time))
                    ;; `resp-wait-time', if float will cause problems in the comparison here
                    (end-time (+ (truncate resp-wait-time) start-time)))
-               (> now end-time)))
+               (log:trace "Checking elapsed time, now:~a, start-time:~a, wait-time:~a, end-time:~a"
+                          now start-time resp-wait-time end-time)
+               (>= now end-time)))
            (wait-and-call-again (resp-type start-time resp-wait-time)
              (%doasync :waiter
                        (lambda ()
+                         (log:trace "Executing on: ~a" (bt2:current-thread))
                          (sleep 0.2) ;deliberate wait or the loop will be too fast
+                         (log:trace "Calling wait-on-resp...")
                          (! self `(:wait-on-resp
                                    . (,resp-type ,start-time ,resp-wait-time))
                             sender)))))
@@ -463,7 +468,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
         (case thing
           ('awaiting
            (progn
-             (log:trace "Awaited thing not received yet")
+             (log:trace "Awaited thing not received yet, call wait again...")
              (wait-and-call-again resp-type start-time resp-wait-time)))
           (otherwise
            (destructuring-bind (response err) thing
@@ -492,7 +497,7 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
 - `(:rem-tunnel-req-listener . <listener-fun>)` to remove a listener function for tunnelling requests.
 - `(:clr-tunnel-req-listeners . nil)` to clear all listener functions for tunnelling requests."
   (destructuring-bind (msg-sym . args) msg
-    (log:trace "async-handler received msg: ~a" msg-sym)
+    ;;(log:trace "async-handler received msg: ~a" msg-sym)
     (let ((self act:*self*)
           (sender act:*sender*))
       (case msg-sym
