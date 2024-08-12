@@ -539,9 +539,8 @@ In case of this the log must be checked."
       (answer ip-client:ip-send-knx-data
         (incf send-count))
       (answer ip-client:ip-receive-knx-data
-        ;; flacky. Better respond with nil until 1 second is elapsed
         (cond
-          ((= send-count 1) (progn (sleep 0.5) nil))
+          ((= send-count 1) (progn (sleep 1.0) nil))
           ((= send-count 2) `(,(make-tunnelling-ack-2 78 0) nil))))
       (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1.0))
         (destructuring-bind (ack err)
