@@ -51,7 +51,6 @@
           (knx-tunnelling-ack
            t)
           (connect:knx-disconnect-request
-           (setf knx-client::*channel-id* nil)
            (setf response-to-receive
                  (connect::%make-disconnect-response 1 0)))))
       (answer ip-client:ip-receive-knx-data
@@ -70,9 +69,11 @@
                       `(,*test-tunnelling-request-ack* nil)
                     (setf *test-tunnelling-request-ack* nil))
                   (progn
-                    (when (typep response-to-receive
-                                 'tunnelling:knx-tunnelling-request)
-                      (sleep receive-tunn-req-delay))
+                    (typecase response-to-receive
+                      (tunnelling:knx-tunnelling-request
+                       (sleep receive-tunn-req-delay))
+                      (connect:knx-disconnect-response
+                       (setf knx-client::*channel-id* nil)))
                     (prog1
                         `(,response-to-receive nil)
                       (setf response-to-receive nil)))))))
@@ -221,7 +222,7 @@
 (test with-knx/ip--write-value--err-no-ack
   (with-fixture request-value (0 t)
     (with-knx/ip ("12.23.34.45" :port 1234)
-      (setf knx-client::*tunnel-ack-wait-timeout-secs* 0)
+      (setf knx-client::*tunnel-ack-wait-timeout-secs* 1)
       (is (typep 
            (fawait
             (write-value "1/2/3"

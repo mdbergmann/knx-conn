@@ -202,8 +202,8 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 
 (defun %handle-response-fut (fut handle-fun)
   (fcompleted fut
-      (result)
-    (destructuring-bind (response _err) result
+      (received)
+    (destructuring-bind (response _err) received
       (declare (ignore _err))
       (when response
         (funcall handle-fun response))
@@ -212,7 +212,7 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 
 (defun retrieve-descr-info ()
   "Retrieve the description information from the KNXnet/IP gateway. The response to this request will be received asynchronously.
-Returns a future. The result will be a list of the received response and an error condition, if any.
+Returns a future. The received will be a list of the received response and an error condition, if any.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol."
   (log:info "Retrieving description information...")
   (%send-req (make-descr-request *hpai-unbound-addr*))
@@ -230,7 +230,7 @@ This request should be sent every some seconds (i.e. 60) as a heart-beat to keep
 
 (defun establish-tunnel-connection (&optional (enable-heartbeat t))
   "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
-Returns a future. The result will be a list of the received response and an error condition, if any.
+Returns a future. The received will be a list of the received response and an error condition, if any.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol.
 
 If the connection is established successfully, the channel-id will be stored in the global variable `*channel-id*`."
@@ -293,15 +293,15 @@ If the connection is established successfully, the channel-id will be stored in 
   (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
     (%send-req req)
     (fmap (%receive-resp 'knx-tunnelling-ack ack-timeout)
-        (result)
-      (destructuring-bind (resp err) result
+        (received)
+      (destructuring-bind (resp err) received
         (declare (ignore resp))
         (if (and err (typep err 'knx-response-timeout-error))
             (progn
               (log:debug "Received no ACK in time, resending request.")
               (%send-req req)
               (%receive-resp 'knx-tunnelling-ack ack-timeout))
-            result)))))
+            received)))))
 
 (defun send-write-request (group-address dpt)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
@@ -351,26 +351,25 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
 (defun %async-handler-knx-receive (self)
   (%doasync :receiver
             (lambda ()
-              (prog1
-                  (handler-case
-                      ;; this call blocks until data is available
-                      ;; or there is an error
-                      (ip-receive-knx-data)
-                    (error (c)
-                      (log:warn "Error on receiving: ~a" c)))
-                ;; in tests only to slow down the loop
-                (sleep *receive-knx-data-recur-delay-secs*)
-                (when (ip-connected-p)
-                  (! self `(:receive . nil)))))
-            (lambda (result)
-              (handler-case
-                  (when (and result (car result))
-                    (log:debug "KNX message received: (~a ~a)"
-                               (type-of (first result))
-                               (second result))
-                    (! self `(:received . ,result)))
-                (error (c)
-                  (log:warn "Error on received: ~a" c))))))
+              (let ((received))
+                (handler-case
+                    ;; this call blocks until data is available
+                    ;; or there is an error
+                    (setf received (ip-receive-knx-data))
+                  (error (c)
+                    (log:warn "Error on receiving: ~a" c)))
+                (handler-case
+                    (when (and received (car received))
+                      (log:debug "KNX message received: (~a ~a)"
+                                 (type-of (first received))
+                                 (second received))
+                      (! self `(:received . ,received)))
+                  (error (c)
+                    (log:warn "Error on received: ~a" c))))
+              ;; in tests only to slow down the loop
+              (sleep *receive-knx-data-recur-delay-secs*)
+              (when (ip-connected-p)
+                (! self `(:receive . nil))))))
 
 (defun %handle-tunnelling-request (self received)
   (! self `(:send . ,(make-tunnelling-ack received)))
@@ -486,7 +485,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
   "Allows the following messages:
 
 - `(:send . <request>)` to send an knx request to the gateway.
-- `(:receive . nil)` to start receive knx requests/responses from the gateway. The receival itself is done in a separate task (sento.tasks API). The result of the receival is forwarded to:
+- `(:receive . nil)` to start receive knx requests/responses from the gateway. The receival itself is done in a separate task (sento.tasks API). The received of the receival is forwarded to:
 - `(:received . <result>)` looks at what is the type of the received.
 For `knx-tunnelling-request`s the registered listener functions will be called. All else will be enqueued in the `*awaited-things*` list, for `:wait-on-resp` to check.
 - `(:wait-on-resp . (<resp-type> <start-time> <wait-time>))` to wait (by retrying and checking on the enqueued messages, the actor is not blocked) for a response of type `<resp-type>` until the time `<start-time> + <wait-time> (defaults to *resp-wait-timeout-secs*, can be dynamically overridden by `let')` has elapsed. If the time has elapsed, a condition of type `knx-receive-error` will be signalled. If a response of the correct type is received, the response will be replied to the sender of the request.
