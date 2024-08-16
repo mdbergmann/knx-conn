@@ -41,18 +41,18 @@
                 (cons #(192 168 1 1) 1234))))
       (answer (ip-client:ip-send-knx-data req)
         (etypecase req
-          (connect:knx-connect-request
+          (knx-connect-request
            (when connect-ok
              (setf response-to-receive
                    (make-test-connect-response))))
-          (tunnelling:knx-tunnelling-request
+          (knx-tunnelling-request
            (setf response-to-receive
                  *test-tunnelling-request-receive*))
           (knx-tunnelling-ack
            t)
-          (connect:knx-disconnect-request
+          (knx-disconnect-request
            (setf response-to-receive
-                 (connect::%make-disconnect-response 1 0)))))
+                 (make-disconnect-response 1 0)))))
       (answer ip-client:ip-receive-knx-data
         (if (null knx-client::*channel-id*)
             (typecase response-to-receive
@@ -70,9 +70,9 @@
                     (setf *test-tunnelling-request-ack* nil))
                   (progn
                     (typecase response-to-receive
-                      (tunnelling:knx-tunnelling-request
+                      (knx-tunnelling-request
                        (sleep receive-tunn-req-delay))
-                      (connect:knx-disconnect-response
+                      (knx-disconnect-response
                        (setf knx-client::*channel-id* nil)))
                     (prog1
                         `(,response-to-receive nil)

@@ -13,6 +13,7 @@
            ;; disconnect
            #:make-disconnect-request
            #:knx-disconnect-request
+           #:make-disconnect-response
            #:knx-disconnect-response
            #:disconnect-response-status
            #:disconnect-response-channel-id
@@ -195,7 +196,7 @@ KNXnet/IP body
 (defconstant +knx-disconnect-response+ #x020a)
 
 (defstruct (knx-disconnect-response (:include knx-package)
-                                    (:constructor %%make-disconnect-response)
+                                    (:constructor %make-disconnect-response)
                                     (:conc-name disconnect-response-))
   "KNXnet/IP header (see above)
 
@@ -207,8 +208,8 @@ KNXnet/IP body
   (channel-id (error "channel-id required!") :type octet)
   (status (error "status required!") :type octet))
 
-(defun %make-disconnect-response (channel-id status)
-  (%%make-disconnect-response
+(defun make-disconnect-response (channel-id status)
+  (%make-disconnect-response
    :header (make-header +knx-disconnect-response+
                         (+ 6 2))
    :channel-id channel-id
@@ -217,7 +218,7 @@ KNXnet/IP body
 (defmethod parse-to-obj ((obj-type (eql +knx-disconnect-response+)) header body)
   (let ((channel-id (aref body 0))
         (status (aref body 1)))
-    (%%make-disconnect-response
+    (%make-disconnect-response
      :header header
      :channel-id channel-id
      :status status)))
