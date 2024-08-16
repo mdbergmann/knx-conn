@@ -33,15 +33,26 @@
                                          #(0 0)
                                          (to-byte-seq *hpai-unbound-addr*)))))
     (is (typep req 'knx-disconnect-request))
-    (is (= (connect::disconnect-request-channel-id req) 0))))
+    (is (= (disconnect-request-channel-id req) 0))))
 
 (test parse-disconnect-response
   (let ((resp (parse-to-obj connect::+knx-disconnect-response+
                             (make-header connect::+knx-disconnect-response+ 2)
                             #(0 0))))
     (is (typep resp 'knx-disconnect-response))
-    (is (= (connect::disconnect-response-channel-id resp) 0))
-    (is (= (connect::disconnect-response-status resp) 0))))
+    (is (= (disconnect-response-channel-id resp) 0))
+    (is (= (disconnect-response-status resp) 0))))
+
+(test disconnect-response--to-byte-seq
+  (let* ((res (make-disconnect-response 1 0))
+         (bytes (to-byte-seq res)))
+    (is (vectorp bytes))
+    (is (= (length bytes) 8))))
+
+(test disconnect-response--to-from
+  (let* ((res-bytes (to-byte-seq (make-disconnect-response 3 4)))
+         (res (parse-root-knx-object res-bytes)))
+    (is (typep res 'knx-disconnect-response))))
 
 (test make-connstate-request--ok
   (let ((hpai (make-hpai #(127 0 0 1) 123))

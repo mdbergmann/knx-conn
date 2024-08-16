@@ -15,6 +15,8 @@
            #:knx-disconnect-request
            #:make-disconnect-response
            #:knx-disconnect-response
+           #:disconnect-request-status
+           #:disconnect-request-channel-id
            #:disconnect-response-status
            #:disconnect-response-channel-id
            ;; connection-state
@@ -210,10 +212,15 @@ KNXnet/IP body
 
 (defun make-disconnect-response (channel-id status)
   (%make-disconnect-response
-   :header (make-header +knx-disconnect-response+
-                        (+ 6 2))
+   :header (make-header +knx-disconnect-response+ 2)
    :channel-id channel-id
    :status status))
+
+(defmethod to-byte-seq ((obj knx-disconnect-response))
+  (concatenate '(vector octet)
+               (call-next-method obj)
+               (vector (disconnect-response-channel-id obj)
+                       (disconnect-response-status obj))))
 
 (defmethod parse-to-obj ((obj-type (eql +knx-disconnect-response+)) header body)
   (let ((channel-id (aref body 0))

@@ -129,7 +129,6 @@ The byte-sequence should be a flat vector of octets."))
 (defun parse-root-knx-object (pkg-data)
   "Root object parse function.
 `PKG-DATA`: package data, array of bytes representing the package.
-`PARSE-TYPE-FUN`: function to parse the package body based on the specific object type.
 Returns the parsed object."
   (let* ((header (%parse-header pkg-data))
          (header-len (header-len header))
