@@ -159,12 +159,13 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
   (let ((scheduler (asys:scheduler
                     (ac:system
                      (act:context *async-handler*)))))
-    (setf *heartbeat-timer-sig*
-          (wt:schedule-recurring scheduler
-                                 *heartbeat-interval-secs*
-                                 *heartbeat-interval-secs*
-                                 (lambda ()
-                                   (! *async-handler* '(:heartbeat . nil)))))))
+    (setf *heartbeat-timer-sig* (gensym "knx-heartbeat-timer-"))
+    (wt:schedule-recurring scheduler
+                           *heartbeat-interval-secs*
+                           *heartbeat-interval-secs*
+                           (lambda ()
+                             (! *async-handler* '(:heartbeat . nil)))
+                           *heartbeat-timer-sig*)))
 
 (defun %stop-heartbeat ()
   (assert *async-handler* nil "No async-handler set!")
