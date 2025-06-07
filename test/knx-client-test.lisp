@@ -480,21 +480,22 @@ In case of this the log must be checked."
       (is (= (second seq-counters) 254))
       (is (= (first seq-counters) 0)))))
 
-(test send-write-request--ack-timeout
+(test send-write-request--ack-timeout--should-repeat-send-once
   (with-fixture env (nil t)
     (setf knx-client::*channel-id* 78)
     (answer ip-client:ip-send-knx-data t)
     (answer ip-client:ip-receive-knx-data
       (progn
         (sleep 1.0) nil))
-    (let ((knx-client::*tunnel-ack-wait-timeout-secs* 0.5))
+    (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1.0))
       (destructuring-bind (ack err)
           (fawait
            (send-write-request (make-group-address "0/4/10")
                                (make-dpt1 :switch :on))
-           :timeout 2.0)
+           :timeout 5.0)
         (is (null ack))
-        (is (typep err 'knx-response-timeout-error))))))
+        (is (typep err 'knx-response-timeout-error))
+        (is (= 4 (length (invocations 'ip-client:ip-send-knx-data))))))))
 
 (test send-read-request--resolves-with-ack
   (with-fixture env (nil t)

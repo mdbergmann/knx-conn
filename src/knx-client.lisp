@@ -69,15 +69,15 @@
 Times must be in full seconds. Float values will be truncated.")
 
 (defparameter *tunnel-ack-wait-timeout-secs* 2
-  "Timeout for waiting for a tunnelling ack response. Should be 1, we set 2
-Times must be in full seconds. Float values will be truncated.")
+  "Timeout for waiting for a tunnelling ack response. Should be 1, we set 2.
+Time must be in full seconds. Float values will be truncated.")
 
 (defconstant +heartbeat-resp-wait-timeout-secs+ 10
   "Timeout for waiting for a heartbeat response.")
 
 (defparameter *response-wait-timeout-secs* *default-response-wait-timeout-secs*
   "Timeout for waiting for a response.
-Times must be in full seconds. Float values will be truncated.")
+Time must be in full seconds. Float values will be truncated.")
 
 ;; recur delay -- private
 
@@ -240,6 +240,7 @@ If the connection is established successfully, the channel-id will be stored in 
               ip-client:*local-host-and-port*
               ip-client:*local-host-and-port*))
   (%handle-response-fut
+   ;; TODO: we should a 10 second timeout here waiting for CONNECT_RESPONSE
    (%receive-resp 'knx-connect-response)
    (lambda (response)
      (let ((status (connect-response-status response)))
@@ -280,8 +281,10 @@ If the connection is established successfully, the channel-id will be stored in 
 ;; tunnelling-request functions
 ;; ---------------------------------
 
-(defun %send-tunnel-request (req)
-  "Sends given tunnel request and waits for tunnel-ack, resends request once if first ack doesn't come in time."
+(defun %send-tunnel-request (req &key (retries 3))
+  "Sends given tunnel request and waits for tunnel-ack, resends request once if first ack doesn't come in time.
+
+A tunnelling-request has to be ACK within 1 second and be repeated once if the ACK is not received."
   (log:trace "Checking on no awaited ACK...")
   (unless (wait-cond
            (lambda ()
@@ -292,17 +295,27 @@ If the connection is established successfully, the channel-id will be stored in 
   
   (log:trace "Check OK, go on...")
   (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
-    (%send-req req)
-    (fmap (%receive-resp 'knx-tunnelling-ack ack-timeout)
-        (received)
-      (destructuring-bind (resp err) received
-        (declare (ignore resp))
-        (if (and err (typep err 'knx-response-timeout-error))
-            (progn
-              (log:debug "Received no ACK in time, resending request.")
-              (%send-req req)
-              (%receive-resp 'knx-tunnelling-ack ack-timeout))
-            received)))))
+    (labels ((timeout-or-retry (count)
+               (%send-req req)
+               (fmap (%receive-resp 'knx-tunnelling-ack ack-timeout)
+                   (received)
+      	         (destructuring-bind (resp err) received
+                   (declare (ignore resp))
+                   (if (and err (typep err 'knx-response-timeout-error))
+                       (progn
+                         (log:warn "Received no ACK in time, resending request (try ~a)."
+                                   (1+ count))
+                         (if (>= count retries)
+                             (progn
+                               (log:error
+                                "Retried sending request ~a times but no ACK for req: ~a"
+                                count req)
+                               received)
+                             (timeout-or-retry (1+ count))))
+                       (progn
+                         (log:debug "Result: ~a" received)
+                         received))))))
+      (timeout-or-retry 0))))
 
 (defun send-write-request (group-address dpt)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
@@ -454,7 +467,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
       (if (null (gethash resp-type *awaited-things*))
           (setf (gethash resp-type *awaited-things*) 'awaiting))
       (when (timeout-elapsed-p start-time resp-wait-time)
-        (log:info "Time elapsed waiting for response of type: ~a" resp-type)
+        (log:warn "Time elapsed waiting for response of type: ~a" resp-type)
         (reply `(nil ,(make-condition
                        'knx-response-timeout-error
                        :format-control
