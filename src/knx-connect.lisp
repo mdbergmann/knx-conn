@@ -144,6 +144,7 @@ In case of error, the future will be resolved with the error condition or `NIL' 
           (setf listener-fun
                 (%make-listener-fun requested-ga dpt-type))
           (add-tunnelling-request-listener listener-fun)
+          ;; listener is cleaned up in macro
           (send-read-request (make-group-address group-address)))
         (result)
       (declare (ignore result))

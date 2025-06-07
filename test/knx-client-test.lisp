@@ -480,7 +480,7 @@ In case of this the log must be checked."
       (is (= (second seq-counters) 254))
       (is (= (first seq-counters) 0)))))
 
-(test send-write-request--ack-timeout--should-repeat-send-once
+(test send-write-request--ack-timeout--should-repeat-send-with-retry
   (with-fixture env (nil t)
     (setf knx-client::*channel-id* 78)
     (answer ip-client:ip-send-knx-data t)
