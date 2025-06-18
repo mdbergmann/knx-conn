@@ -286,6 +286,8 @@ If the connection is established successfully, the channel-id will be stored in 
 
 A tunnelling-request has to be ACK within 1 second and be repeated once if the ACK is not received."
   (log:trace "Checking on no awaited ACK...")
+  ;; We're waiting for a `knx-tunneling-ack' including the sequence-counter of the request.
+  ;; to really wait for the ack we've sent.
   (let ((recv-type (cons 'knx-tunnelling-ack
                          (tunnelling-seq-counter req))))
     (unless (wait-cond
