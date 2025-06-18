@@ -31,7 +31,9 @@
 (defvar *test-tunnelling-request-ack* nil)
 
 (def-fixture request-value (receive-tunn-req-delay
-                            connect-ok)
+                            connect-ok
+                            &optional 
+                            (allow-auto-ack t))
   (with-mocks ()
     (let ((response-to-receive))
       (answer ip-client:ip-connect
@@ -47,7 +49,10 @@
                    (make-test-connect-response))))
           (knx-tunnelling-request
            (setf response-to-receive
-                 *test-tunnelling-request-receive*))
+                 (or *test-tunnelling-request-receive*
+                     (and allow-auto-ack
+                          (make-tunnelling-ack-2 knx-conn.knx-client::*channel-id*
+                                                 (tunnelling-seq-counter req))))))
           (knx-tunnelling-ack
            t)
           (knx-disconnect-request
@@ -86,6 +91,7 @@
            (progn
              (&body))
         (setf *test-tunnelling-request-receive* nil
+              *test-tunnelling-request-ack* nil
               knx-client::*tunnel-ack-wait-timeout-secs*
               knx-client::*default-response-wait-timeout-secs*)))))
 
@@ -167,8 +173,8 @@
 ;; with-knx/ip macro
 ;; ------------------------------------
 
-(defun make-test-tunnelling-ack ()
-  (tunnelling:make-tunnelling-ack-2 1 0))
+(defun make-test-tunnelling-ack (&optional (seq-id 0))
+  (tunnelling:make-tunnelling-ack-2 1 seq-id))
 
 ;; write-value
 ;; -----------
@@ -201,7 +207,6 @@
     (is-false knx-client::*channel-id*)))
 
 (test with-knx/ip--write-value--supported-dpt-types
-  (setf *test-tunnelling-request-receive* (make-test-tunnelling-ack))
   (with-fixture request-value (0 t)
     (with-knx/ip ("12.23.34.45" :port 1234)
       (let ((dpts `((dpt:dpt-1.001 . nil)
@@ -209,18 +214,18 @@
                     (dpt:dpt-5.010 . 123)
                     (dpt:dpt-9.001 . 23.5)
                     (dpt:dpt-10.001 . ,(local-time:now))
-                    (dpt:dpt-11.001 . ,(local-time:today)))))
-        (is-true (notany #'null
-                         (mapcar (lambda (dpt-vals)
-                                   (let ((dpt-type (car dpt-vals))
-                                         (val (cdr dpt-vals)))
-                                     (fawait
-                                      (write-value "1/2/3" dpt-type val)
-                                      :timeout 5)))
-                                 dpts)))))))
+                    (dpt:dpt-11.001 . ,(local-time:today))
+                    )))
+        (mapcar (lambda (dpt-vals)
+                  (let ((dpt-type (car dpt-vals))
+                        (val (cdr dpt-vals)))
+                    (is-true (fawait
+                              (write-value "1/2/3" dpt-type val)
+                              :timeout 5))))
+                dpts)))))
 
 (test with-knx/ip--write-value--err-no-ack
-  (with-fixture request-value (0 t)
+  (with-fixture request-value (0 t nil)
     (with-knx/ip ("12.23.34.45" :port 1234)
       (setf knx-client::*tunnel-ack-wait-timeout-secs* 1)
       (is (typep 

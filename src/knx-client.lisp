@@ -286,8 +286,8 @@ If the connection is established successfully, the channel-id will be stored in 
 
 A tunnelling-request has to be ACK within 1 second and be repeated once if the ACK is not received."
   (log:trace "Checking on no awaited ACK...")
-  (let* ((seq-id (tunnelling-seq-counter req))
-         (recv-type (cons 'knx-tunnelling-ack seq-id)))
+  (let ((recv-type (cons 'knx-tunnelling-ack
+                         (tunnelling-seq-counter req))))
     (unless (wait-cond
              (lambda ()
                (null (gethash recv-type *awaited-things*)))
@@ -430,7 +430,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
   (destructuring-bind (received err) received-knxobj
     (declare (ignore err))
     (let ((received-type (type-of received)))
-      (log:debug "Received: ~a" received-type)
+      (log:debug "Received type: ~a" received-type)
       (typecase received
         (knx-tunnelling-request
          (%handle-tunnelling-request self received))
