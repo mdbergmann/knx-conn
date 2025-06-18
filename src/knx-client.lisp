@@ -125,7 +125,7 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 (defvar *tunnel-request-listeners* nil
   "A list of functions to be called when a tunnelling request is received.")
 
-(defvar *awaited-things* (make-hash-table :test #'eq)
+(defvar *awaited-things* (make-hash-table :test #'equalp)
   "Pool of received messages that are not handled otherwise.")
 
 (defvar *heartbeat-timer-sig* nil
@@ -142,7 +142,7 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
         *default-response-wait-timeout-secs*)
   (setf *group-address-dpt-mapping* nil)
   (setf *awaited-things*
-        (make-hash-table :test #'eq))
+        (make-hash-table :test #'equalp))
   t)
 
 (defun %assert-channel-id ()
@@ -286,36 +286,38 @@ If the connection is established successfully, the channel-id will be stored in 
 
 A tunnelling-request has to be ACK within 1 second and be repeated once if the ACK is not received."
   (log:trace "Checking on no awaited ACK...")
-  (unless (wait-cond
-           (lambda ()
-             (null (gethash 'knx-tunnelling-ack *awaited-things*)))
-           0.05 5) ;; wait for max 5 seconds => too long
-    (log:warn "Unable to send request, ACK still being awaited!")
-    (return-from %send-tunnel-request))
+  (let* ((seq-id (tunnelling-seq-counter req))
+         (recv-type (cons 'knx-tunnelling-ack seq-id)))
+    (unless (wait-cond
+             (lambda ()
+               (null (gethash recv-type *awaited-things*)))
+             0.05 5) ;; wait for max 5 seconds => too long
+      (log:warn "Unable to send request, ACK still being awaited!")
+      (return-from %send-tunnel-request))
   
-  (log:trace "Check OK, go on...")
-  (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
-    (labels ((timeout-or-retry (count)
-               (%send-req req)
-               (fmap (%receive-resp 'knx-tunnelling-ack ack-timeout)
-                   (received)
-      	         (destructuring-bind (resp err) received
-                   (declare (ignore resp))
-                   (if (and err (typep err 'knx-response-timeout-error))
-                       (progn
-                         (log:warn "Received no ACK in time, resending request (try ~a)."
-                                   (1+ count))
-                         (if (>= count retries)
-                             (progn
-                               (log:error
-                                "Retried sending request ~a times but no ACK for req: ~a"
-                                count req)
-                               received)
-                             (timeout-or-retry (1+ count))))
-                       (progn
-                         (log:debug "Result: ~a" received)
-                         received))))))
-      (timeout-or-retry 0))))
+    (log:trace "Check OK, go on...")
+    (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
+      (labels ((timeout-or-retry (count)
+                 (%send-req req)
+                 (fmap (%receive-resp recv-type ack-timeout)
+                     (received)
+      	           (destructuring-bind (resp err) received
+                     (declare (ignore resp))
+                     (if (and err (typep err 'knx-response-timeout-error))
+                         (progn
+                           (log:warn "Received no ACK in time, resending request (try ~a)."
+                                     (1+ count))
+                           (if (>= count retries)
+                               (progn
+                                 (log:error
+                                  "Retried sending request ~a times but no ACK for req: ~a"
+                                  count req)
+                                 received)
+                               (timeout-or-retry (1+ count))))
+                         (progn
+                           (log:debug "Result: ~a" received)
+                           received))))))
+        (timeout-or-retry 0)))))
 
 (defun send-write-request (group-address dpt)
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
@@ -433,7 +435,9 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
         (knx-tunnelling-request
          (%handle-tunnelling-request self received))
         (knx-tunnelling-ack
-         (log:debug "Received tunnelling ack: ~a" received))
+         (log:debug "Received tunnelling ack: ~a" received)
+         (setf received-type (cons received-type
+                                   (tunnelling-seq-counter received))))
         (knx-disconnect-request
          (setf *channel-id* nil)
          (setf *seq-counter* 0))
