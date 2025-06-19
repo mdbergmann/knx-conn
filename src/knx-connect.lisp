@@ -25,6 +25,7 @@
                                            (:shared (:workers 2 :strategy :round-robin)
                                             :receiver (:workers 1)
                                             :waiter (:workers 1)
+                                            :notifier (:worker 1) ;; for listeners
                                             :read-request (:workers 1)))))))
 
 (defun %shutdown-asys ()

@@ -423,10 +423,12 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
     (progn
       (log:debug "Notifying (~a) listeners of generic L_Data request..."
                  (length *tunnel-request-listeners*))
-      (dolist (listener-fun *tunnel-request-listeners*)
-        (log:debug "Funcalling ~a" listener-fun)
-        (ignore-errors
-         (funcall listener-fun received))))))
+      (%doasync :notifier
+                (lambda ()
+                  (dolist (listener-fun *tunnel-request-listeners*)
+                    (log:debug "Funcalling ~a" listener-fun)
+                    (ignore-errors
+                     (funcall listener-fun received))))))))
 
 (defun %async-handler-knx-received (self received-knxobj)
   (destructuring-bind (received err) received-knxobj
