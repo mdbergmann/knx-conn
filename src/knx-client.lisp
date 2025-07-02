@@ -290,12 +290,12 @@ A tunnelling-request has to be ACK within 1 second and be repeated once if the A
   ;; to really wait for the ack we've sent.
   (let ((recv-type (cons 'knx-tunnelling-ack
                          (tunnelling-seq-counter req))))
-    (unless (wait-cond
-             (lambda ()
-               (null (gethash recv-type *awaited-things*)))
-             0.05 5) ;; wait for max 5 seconds => too long
-      (log:warn "Unable to send request, ACK still being awaited!")
-      (return-from %send-tunnel-request))
+    ;; (unless (wait-cond
+    ;;          (lambda ()
+    ;;            (null (gethash recv-type *awaited-things*)))
+    ;;          0.05 5) ;; wait for max 5 seconds => too long
+    ;;   (log:warn "Unable to send request, ACK still being awaited!")
+    ;;   (return-from %send-tunnel-request))
   
     (log:trace "Check OK, go on...")
     (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
