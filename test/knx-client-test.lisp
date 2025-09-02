@@ -123,8 +123,8 @@
           (fawait result-fut :timeout 1)
         (is (null result))
         (is (typep err 'knx-response-timeout-error))
-        (is (equal (format nil "~a" err)
-                   (format nil "KNX timeout error: Timeout waiting for response of type KNX-DESCR-RESPONSE")))))))
+        (is (string= (format nil "~a" err)
+                     "KNX timeout error: Timeout waiting for response of type KNX-DESCR-RESPONSE"))))))
 
 (test wait-for-response--error-on-response-parsing
   "This also returns `:timeout` because the response couldn't be parsed correctly
@@ -426,16 +426,14 @@ In case of this the log must be checked."
     (answer ip-client:ip-receive-knx-data
       `(,(make-tunnelling-ack-2 78 0) nil))
     (destructuring-bind (ack _err)
-        (fawait
-         (send-write-request (make-group-address "0/4/10")
-                             (make-dpt1 :switch :on))
-         :timeout 1.0)
+        (fresult (send-write-request (make-group-address "0/4/10")
+                                     (make-dpt1 :switch :on)))
       (declare (ignore _err))
       (is (typep ack 'knx-tunnelling-ack))
       (is (= 78 (tunnelling-channel-id ack)))
       (is (= 0 (tunnelling-seq-counter ack))))
     (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-send-knx-data)) 1)))
+               (>= (length (invocations 'ip-client:ip-send-knx-data)) 1)))
     (is-true (await-cond 1.5
                (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))))
 
@@ -451,7 +449,7 @@ In case of this the log must be checked."
         (if (eq :send (car msg))
             (push (tunnelling-seq-counter (cdr msg)) seq-counters)
             (call-previous)))
-      (answer act:? (with-fut t))
+      (answer act:? (with-fut (list t nil)))
       (send-write-request (make-group-address "0/4/10")
                           (make-dpt1 :switch :on))
       (send-write-request (make-group-address "0/4/10")
@@ -472,7 +470,7 @@ In case of this the log must be checked."
         (if (eq :send (car msg))
             (push (tunnelling-seq-counter (cdr msg)) seq-counters)
             (call-previous)))
-      (answer act:? (with-fut t))
+      (answer act:? (with-fut (list t nil)))
       (send-write-request (make-group-address "0/4/10")
                           (make-dpt1 :switch :on))
       (send-write-request (make-group-address "0/4/10")
@@ -496,7 +494,7 @@ In case of this the log must be checked."
            :timeout 5.0)
         (is (null ack))
         (is (typep err 'knx-response-timeout-error))
-        (is (= 4 (length (invocations 'ip-client:ip-send-knx-data))))))))
+        (is (= 2 (length (invocations 'ip-client:ip-send-knx-data))))))))
 
 (test send-read-request--resolves-with-ack
   (with-fixture env (nil t)

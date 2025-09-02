@@ -58,6 +58,11 @@
              (format s "KNX timeout error: ~a"
                      (simple-condition-format-control c)))))
 
+(defun make-timeout-error (fmtstring args)
+  (make-condition
+   'knx-response-timeout-error
+   :format-control (format nil fmtstring args)))
+
 ;; ---------------------------------
 ;; configuration
 ;; ---------------------------------
@@ -68,8 +73,8 @@
   "Default timeout for waiting for a response.
 Times must be in full seconds. Float values will be truncated.")
 
-(defparameter *tunnel-ack-wait-timeout-secs* 2
-  "Timeout for waiting for a tunnelling ack response. Should be 1, we set 2.
+(defparameter *tunnel-ack-wait-timeout-secs* 1
+  "Timeout for waiting for a tunnelling ack response.
 Time must be in full seconds. Float values will be truncated.")
 
 (defconstant +heartbeat-resp-wait-timeout-secs+ 10
@@ -281,29 +286,24 @@ If the connection is established successfully, the channel-id will be stored in 
 ;; tunnelling-request functions
 ;; ---------------------------------
 
-(defun %send-tunnel-request (req &key (retries 3))
-  "Sends given tunnel request and waits for tunnel-ack, resends request once if first ack doesn't come in time.
+(defun %send-tunnel-request (req &key (retries 1))
+  "Sends given tunnel request and waits for tunnel-ack, resends request `retries' times if ack doesn't come in time.
 
 A tunnelling-request has to be ACK within 1 second and be repeated once if the ACK is not received."
-  (log:trace "Checking on no awaited ACK...")
-  ;; We're waiting for a `knx-tunneling-ack' including the sequence-counter of the request.
-  ;; to really wait for the ack we've sent.
   (let ((recv-type (cons 'knx-tunnelling-ack
                          (tunnelling-seq-counter req))))
-    ;; (unless (wait-cond
-    ;;          (lambda ()
-    ;;            (null (gethash recv-type *awaited-things*)))
-    ;;          0.05 5) ;; wait for max 5 seconds => too long
-    ;;   (log:warn "Unable to send request, ACK still being awaited!")
-    ;;   (return-from %send-tunnel-request))
-  
-    (log:trace "Check OK, go on...")
     (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
       (labels ((timeout-or-retry (count)
                  (%send-req req)
-                 (fmap (%receive-resp recv-type ack-timeout)
-                     (received)
-      	           (destructuring-bind (resp err) received
+                 (multiple-value-bind (received fut)
+                     (fawait (%receive-resp recv-type ack-timeout) :timeout ack-timeout)
+                   (log:trace "fut+received: ~a/~a" fut received)
+      	           (destructuring-bind (resp err)
+                       (or received
+                           (list nil
+                                 (make-timeout-error
+                                  "Timeout waiting for response of type ~a"
+                                  recv-type)))
                      (declare (ignore resp))
                      (if (and err (typep err 'knx-response-timeout-error))
                          (progn
@@ -314,11 +314,11 @@ A tunnelling-request has to be ACK within 1 second and be repeated once if the A
                                  (log:error
                                   "Retried sending request ~a times but no ACK for req: ~a"
                                   count req)
-                                 received)
+                                 fut)
                                (timeout-or-retry (1+ count))))
                          (progn
                            (log:debug "Result: ~a" received)
-                           received))))))
+                           fut))))))
         (timeout-or-retry 0)))))
 
 (defun send-write-request (group-address dpt)
@@ -466,7 +466,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
              (%doasync :waiter
                        (lambda ()
                          (log:trace "Executing on: ~a" (bt2:current-thread))
-                         (sleep 0.2) ;deliberate wait or the loop will be too fast
+                         (sleep 0.05) ;deliberate wait or the loop will be too fast
                          (log:trace "Calling wait-on-resp...")
                          (! self `(:wait-on-resp
                                    . (,resp-type ,start-time ,resp-wait-time))
@@ -476,12 +476,9 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
           (setf (gethash resp-type *awaited-things*) 'awaiting))
       (when (timeout-elapsed-p start-time resp-wait-time)
         (log:warn "Time elapsed waiting for response of type: ~a" resp-type)
-        (reply `(nil ,(make-condition
-                       'knx-response-timeout-error
-                       :format-control
-                       (format nil
-                               "Timeout waiting for response of type ~a"
-                               resp-type))))
+        (reply `(nil ,(make-timeout-error
+                       "Timeout waiting for response of type ~a"
+                       resp-type)))
         (remhash resp-type *awaited-things*)
         (return-from %async-handler-knx-wait))
       (log:trace "Checking for awaited response of type: ~a" resp-type)

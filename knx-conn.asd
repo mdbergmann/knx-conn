@@ -1,5 +1,5 @@
 (defsystem "knx-conn"
-  :version "0.2.4"
+  :version "0.2.5"
   :author "Manfred Bergmann"
   :license "GNU GPL, version 3"
   :description "KNXnet/IP implementation in Common Lisp"
@@ -54,6 +54,7 @@
                  (:file "tunnelling-test")
                  (:file "knx-client-test")
                  (:file "knx-connect-test")
+                 (:file "knxc-tunnel-e2e-test")
                  )))
   :description "Test system for knx"
   :perform (test-op (op c) (symbol-call :fiveam :run!

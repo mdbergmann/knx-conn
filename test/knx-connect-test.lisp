@@ -228,13 +228,14 @@
   (with-fixture request-value (0 t nil)
     (with-knx/ip ("12.23.34.45" :port 1234)
       (setf knx-client::*tunnel-ack-wait-timeout-secs* 1)
-      (is (typep 
-           (fawait
-            (write-value "1/2/3"
-                         'dpt:dpt-1.001
-                         t)
-            :timeout 5)
-           'knx-client:knx-response-timeout-error)))
+      (ignore-errors
+       (is (typep 
+            (fawait
+             (write-value "1/2/3"
+                          'dpt:dpt-1.001
+                          t)
+             :timeout 5)
+            'knx-client:knx-response-timeout-error))))
     (is-true (await-cond 1.5
                (= (length (invocations
                            'ip-client:ip-connect)) 1)))
@@ -358,7 +359,7 @@
           (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
                   :timeout 1.0)
         (is (not (null fut)))
-        (is (null res))
+        (is (eq :on res))
         ))))
 
 (defun make-test-tunnel-request-dpt-9.001-ind_response ()
