@@ -300,8 +300,8 @@ In case of this the log must be checked."
 
     (with-fixture env (nil t)
       (setf knx-client::*channel-id* 78)
-      (destructuring-bind (response err)
-          (fawait (send-connection-state) :timeout 1.5)
+      (multiple-value-bind (response err)
+          (send-connection-state)
         (is (null err))
         (is (typep response 'knx-connstate-response))))
       
