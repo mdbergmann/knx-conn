@@ -208,10 +208,10 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 ;; knx-ip protocol functions
 ;; ---------------------------------
 
-(defun %send-req (req)
+(defun %%send-req (req)
   (! *async-handler* `(:send . ,req)))
 
-(defun %receive-resp (resp-type &optional (resp-wait-time
+(defun %%receive-resp (resp-type &optional (resp-wait-time
                                            *response-wait-timeout-secs*))
   (? *async-handler* `(:wait-on-resp
                        . (,resp-type
@@ -220,11 +220,12 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 
 (defun %send-receive (req resp-type &optional (resp-wait-time
                                                *response-wait-timeout-secs*))
+  "Send request and internally waits until response is received, which is then returned."
   (%dosync :response-awaiter
            (lambda ()
-             (%send-req req)
+             (%%send-req req)
              (destructuring-bind (response err)
-                 (fawait (%receive-resp resp-type resp-wait-time)
+                 (fawait (%%receive-resp resp-type resp-wait-time)
                          :timeout (+ resp-wait-time 5) ;; we don't want this to timeout
                          :sleep-time .05)
                (cons response err)))))
@@ -241,7 +242,7 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 
 (defun retrieve-descr-info ()
   "Retrieve the description information from the KNXnet/IP gateway. The response to this request will be received asynchronously.
-Returns a future. The received will be a list of the received response and an error condition, if any.
+Returns `(values response err)'.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol."
   (log:info "Retrieving description information...")
   (%send-receive (make-descr-request *hpai-unbound-addr*)
@@ -249,50 +250,51 @@ The error condition will be of type `knx-receive-error` and reflects just an err
 
 (defun send-connection-state ()
   "Sends a connection-state request to the KNXnet/IP gateway. The response to this request will be received asynchronously.
-Returns the request that was sent.
+Returns `(values response err)'.
 This request should be sent every some seconds (i.e. 60) as a heart-beat to keep the connection alive."
   (%assert-channel-id)
-  (%send-req (make-connstate-request
-              *channel-id*
-              ip-client:*local-host-and-port*))
-  (%receive-resp 'knx-connstate-response))
+  (%send-receive (make-connstate-request
+                  *channel-id*
+                  ip-client:*local-host-and-port*)
+                 'knx-connstate-response))
 
 (defun establish-tunnel-connection (&optional (enable-heartbeat t))
   "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
-Returns a future. The received will be a list of the received response and an error condition, if any.
+Returns `(values response err)'.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol.
 
 If the connection is established successfully, the channel-id will be stored in the global variable `*channel-id*`."
   (log:info "Establishing tunnel connection...")
-  (%send-req (make-connect-request
-              ip-client:*local-host-and-port*
-              ip-client:*local-host-and-port*))
-  (%handle-response-fut
-   ;; TODO: we should a 10 second timeout here waiting for CONNECT_RESPONSE
-   (%receive-resp 'knx-connect-response)
-   (lambda (response)
-     (let ((status (connect-response-status response)))
-       (if (not (eql status 0))
-           (log:warn "Tunnel connection failed, status: ~a" status)
-           (progn
-             (log:info "Tunnel connection established.")
-             (log:info "Channel-id: ~a" (connect-response-channel-id response))
-             (setf *channel-id*
-                   (connect-response-channel-id response))
-             (setf *seq-counter* 0)
-             (when enable-heartbeat
-               (log:info "Starting heartbeat...")
-               (%start-heartbeat))))))))
+  (multiple-value-bind (response err)
+      (%send-receive (make-connect-request
+                      ip-client:*local-host-and-port*
+                      ip-client:*local-host-and-port*)
+                     'knx-connect-response)
+    (unless response
+      (log:warn "No reponse received. Err: ~a" err))
+    (let ((status (connect-response-status response)))
+      (if (not (eql status 0))
+          (log:warn "Tunnel connection failed, status: ~a" status)
+          (progn
+            (log:info "Tunnel connection established.")
+            (log:info "Channel-id: ~a" (connect-response-channel-id response))
+            (setf *channel-id*
+                  (connect-response-channel-id response))
+            (setf *seq-counter* 0)
+            (when enable-heartbeat
+              (log:info "Starting heartbeat...")
+              (%start-heartbeat)))))
+    (values response err)))
 
 (defun close-tunnel-connection ()
   (%assert-channel-id)
   (%stop-heartbeat)
   (log:info "Closing tunnel connection...")
-  (%send-req (make-disconnect-request
+  (%%send-req (make-disconnect-request
               *channel-id*
               ip-client:*local-host-and-port*))
   (%handle-response-fut
-   (%receive-resp 'knx-disconnect-response)
+   (%%receive-resp 'knx-disconnect-response)
    (lambda (response)
      (let ((status (disconnect-response-status response)))
        (if (not (eql status 0))
@@ -317,9 +319,9 @@ A tunnelling-request has to be ACK within 1 second and be repeated once if the A
                          (tunnelling-seq-counter req))))
     (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
       (labels ((timeout-or-retry (count)
-                 (%send-req req)
+                 (%%send-req req)
                  (multiple-value-bind (received fut)
-                     (fawait (%receive-resp recv-type ack-timeout) :timeout ack-timeout)
+                     (fawait (%%receive-resp recv-type ack-timeout) :timeout ack-timeout)
                    (log:trace "fut+received: ~a/~a" fut received)
       	           (destructuring-bind (resp err)
                        (or received

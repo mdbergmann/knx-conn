@@ -151,21 +151,20 @@ In case of this the log must be checked."
 
     ;; set channel-id to 0 to test that it is set to the value in the response
     (let ((knx-client::*channel-id* 0))
-      (let ((result-fut (establish-tunnel-connection nil)))
-        (destructuring-bind (response err)
-            (fawait result-fut :timeout 1.5)
-          (is (eq nil err))
-          (is (typep response 'knx-connect-response))
-          ;; check knx-header
-          (let ((header (package-header response)))
-            (is (typep header 'knx-header)))
-          ;; check connect response body
-          (is (eql +connect-status-no-error+ (connect-response-status response)))
-          (is (eql 78 (connect-response-channel-id response)))
-          (is (equal (address-string-rep
-                      (crd:crd-individual-address
-                       (connect-response-crd response)))
-                     "14.14.255")))))
+      (multiple-value-bind (response err)
+          (establish-tunnel-connection nil)
+        (is (eq nil err))
+        (is (typep response 'knx-connect-response))
+        ;; check knx-header
+        (let ((header (package-header response)))
+          (is (typep header 'knx-header)))
+        ;; check connect response body
+        (is (eql +connect-status-no-error+ (connect-response-status response)))
+        (is (eql 78 (connect-response-channel-id response)))
+        (is (equal (address-string-rep
+                    (crd:crd-individual-address
+                     (connect-response-crd response)))
+                   "14.14.255"))))
     
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
     (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))))
@@ -179,9 +178,8 @@ In case of this the log must be checked."
     (setf knx-client::*channel-id* -1)
     (setf knx-client::*seq-counter* -1)
     (establish-tunnel-connection nil)
-    (is-true (await-cond 1.5
-               (and (= knx-client::*channel-id* 78)
-                    (= knx-client::*seq-counter* 0))))
+    (is (and (= knx-client::*channel-id* 78)
+             (= knx-client::*seq-counter* 0)))
     
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
     (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))))
@@ -198,12 +196,11 @@ In case of this the log must be checked."
     (answer ip-client:ip-receive-knx-data
       `(,*test-connect-response--err* nil))
 
-    (let ((response-fut (establish-tunnel-connection nil)))
-      (destructuring-bind (resp err)
-          (fawait response-fut :timeout 1.5)
-        (is (null err))
-        (is (= (connect-response-status resp)
-               +connect-status-err-conn-type+))))
+    (multiple-value-bind (resp err)
+        (establish-tunnel-connection nil)
+      (is (null err))
+      (is (= (connect-response-status resp)
+             +connect-status-err-conn-type+)))
 
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
     (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))))
@@ -215,7 +212,7 @@ In case of this the log must be checked."
       `(,*test-connect-response--err* nil))
 
     (setf knx-client::*channel-id* -1)
-    (fawait (establish-tunnel-connection nil) :timeout 1)
+    (establish-tunnel-connection nil)
     (is (= knx-client::*channel-id* -1))
     
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
@@ -229,12 +226,11 @@ In case of this the log must be checked."
     (answer knx-client:send-connection-state t)
 
     (setf knx-client::*heartbeat-interval-secs* 1.0)
-    (let ((response-fut (establish-tunnel-connection t)))
-      (destructuring-bind (resp err)
-          (fawait response-fut :timeout 1.5)
-        (declare (ignore err))
-        (is (= (connect-response-status resp)
-               +connect-status-no-error+))))
+    (multiple-value-bind (resp err)
+        (establish-tunnel-connection t)
+      (declare (ignore err))
+      (is (= (connect-response-status resp)
+             +connect-status-no-error+)))
     
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
     (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))
