@@ -21,12 +21,15 @@
   (log:info "Ensuring actor system...")
   (unless *asys*
     (log:info "Creating actor system...")
-    (setf *asys* (asys:make-actor-system '(:dispatchers
-                                           (:shared (:workers 2 :strategy :round-robin)
-                                            :receiver (:workers 1)
-                                            :waiter (:workers 1)
-                                            :notifier (:worker 1) ;; for listeners
-                                            :read-request (:workers 1)))))))
+    (setf *asys* (asys:make-actor-system
+                  '(:dispatchers
+                    (:shared (:workers 2 :strategy :round-robin)
+                     :receiver (:workers 1) ;; reading IP (UDP) data
+                     :waiter (:workers 1)   ;; delay for :wait-on-resp
+                     :notifier (:worker 1)  ;; for notifying listeners                     
+                     :read-request (:workers 1) ;; higher-level read-request (below)
+                     :response-awaiter (:worker 1) ;; used for awaiting ack
+                     ))))))
 
 (defun %shutdown-asys ()
   (log:info "Shutting down actor system...")

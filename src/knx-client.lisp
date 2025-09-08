@@ -192,6 +192,19 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 (defun clr-tunnelling-request-listeners ()
   (! *async-handler* '(:clr-tunnel-req-listeners)))
 
+
+(defun %doasync (dispatcher fun &optional (completed-fun nil))
+  (tasks:with-context ((act:context *async-handler*) dispatcher)
+    (if completed-fun
+        (tasks:task-async fun
+                          :on-complete-fun completed-fun)
+        (tasks:task-start fun))))
+
+(defun %dosync (dispatcher fun)
+  "Returns `values'."
+  (tasks:with-context ((act:context *async-handler*) dispatcher)
+    (tasks:task-yield fun)))
+
 ;; ---------------------------------
 ;; knx-ip protocol functions
 ;; ---------------------------------
@@ -205,6 +218,17 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
                        . (,resp-type
                           ,(get-universal-time)
                           ,resp-wait-time))))
+
+(defun %send-receive (req resp-type &optional (resp-wait-time
+                                               *response-wait-timeout-secs*))
+  (%dosync :response-awaiter
+           (lambda ()
+             (%send-req req)
+             (destructuring-bind (response err)
+                 (fawait (%receive-resp resp-type resp-wait-time)
+                         :timeout (+ resp-wait-time 5) ;; we don't want this to timeout
+                         :sleep-time .05)
+               (cons response err)))))
 
 (defun %handle-response-fut (fut handle-fun)
   (fcompleted fut
@@ -221,8 +245,8 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 Returns a future. The received will be a list of the received response and an error condition, if any.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol."
   (log:info "Retrieving description information...")
-  (%send-req (make-descr-request *hpai-unbound-addr*))
-  (%receive-resp 'knx-descr-response))
+  (%send-receive (make-descr-request *hpai-unbound-addr*)
+                 'knx-descr-response))
 
 (defun send-connection-state ()
   "Sends a connection-state request to the KNXnet/IP gateway. The response to this request will be received asynchronously.
@@ -355,13 +379,6 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
 ;; ---------------------------------
 ;; async-handler
 ;; ---------------------------------
-
-(defun %doasync (dispatcher fun &optional (completed-fun nil))
-  (tasks:with-context ((act:context *async-handler*) dispatcher)
-    (if completed-fun
-        (tasks:task-async fun
-                          :on-complete-fun completed-fun)
-        (tasks:task-start fun))))
 
 (defun %async-handler-knx-send (knxobj)
   (ip-send-knx-data knxobj))

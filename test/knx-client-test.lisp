@@ -28,7 +28,8 @@
                       (:shared (:workers 2)
                        :receiver (:workers 1)
                        :notifier (:worker 1)
-                       :waiter (:workers 1))))))
+                       :waiter (:workers 1)
+                       :response-awaiter (:worker 1))))))
     (with-mocks ()
       (answer ip-client:ip-connect
         (progn
@@ -78,35 +79,31 @@
     (answer ip-client:ip-receive-knx-data
       `(,*test-descr-response* nil))
 
-    (let ((result-fut (retrieve-descr-info)))
-      (await-cond 1.5
-        (not (eq :not-ready (future:fresult result-fut))))
-      (destructuring-bind (result err)
-          (future:fresult result-fut)
-        (is (eq nil err))
-        (is (typep result 'knx-descr-response))
-        ;; check knx-header
-        (let ((header (package-header result)))
-          (is (typep header 'knx-header))
-          (is (eql knxobj::+knx-header-len+ (header-len header)))
-          (is (eql descr-info::+knx-descr-response+ (header-type header)))
-          (is (eql knxobj::+knx-netip-version+ (header-knxnetip-version header)))
-          (is (eql (- 84 knxobj::+knx-header-len+) (header-body-len header))))
-        ;; check dibs
-        (is (typep (descr-response-device-hardware result)
-                   'dib))
-        (is (typep (descr-response-device-hardware result)
-                   'dib-device-info))
-        (is (typep (descr-response-supp-svc-families result)
-                   'dib))
-        (is (typep (descr-response-supp-svc-families result)
-                   'dib-supp-svc-families))
-        (is (typep (descr-response-other-dib-info result)
-                   'dib-list))
-        (is-false (endp (descr-response-other-dib-info result)))))
+    (multiple-value-bind (result err) (retrieve-descr-info)
+      (is (eq nil err))
+      (is (typep result 'knx-descr-response))
+      ;; check knx-header
+      (let ((header (package-header result)))
+        (is (typep header 'knx-header))
+        (is (eql knxobj::+knx-header-len+ (header-len header)))
+        (is (eql descr-info::+knx-descr-response+ (header-type header)))
+        (is (eql knxobj::+knx-netip-version+ (header-knxnetip-version header)))
+        (is (eql (- 84 knxobj::+knx-header-len+) (header-body-len header))))
+      ;; check dibs
+      (is (typep (descr-response-device-hardware result)
+                 'dib))
+      (is (typep (descr-response-device-hardware result)
+                 'dib-device-info))
+      (is (typep (descr-response-supp-svc-families result)
+                 'dib))
+      (is (typep (descr-response-supp-svc-families result)
+                 'dib-supp-svc-families))
+      (is (typep (descr-response-other-dib-info result)
+                 'dib-list))
+      (is-false (endp (descr-response-other-dib-info result)))))
     
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
-    (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))))
+    (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))
 
 (test wait-for-response--with-timeout--stop-when-elapsed
   "Test that when a response is expected but it doesn't come within the
@@ -117,14 +114,11 @@
       (progn
         (sleep 2.0) nil))
     (setf *response-wait-timeout-secs* 1)
-    (let ((result-fut (retrieve-descr-info)))
-      (sleep 2.0)
-      (destructuring-bind (result err)
-          (fawait result-fut :timeout 1)
-        (is (null result))
-        (is (typep err 'knx-response-timeout-error))
-        (is (string= (format nil "~a" err)
-                     "KNX timeout error: Timeout waiting for response of type KNX-DESCR-RESPONSE"))))))
+    (multiple-value-bind (result err) (retrieve-descr-info)
+      (is (null result))
+      (is (typep err 'knx-response-timeout-error))
+      (is (string= (format nil "~a" err)
+                   "KNX timeout error: Timeout waiting for response of type KNX-DESCR-RESPONSE")))))
 
 (test wait-for-response--error-on-response-parsing
   "This also returns `:timeout` because the response couldn't be parsed correctly
