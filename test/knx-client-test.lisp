@@ -130,11 +130,9 @@ In case of this the log must be checked."
       `(nil ,(make-condition 'simple-error :format-control "foo")))
 
     (setf *response-wait-timeout-secs* 0)
-    (let ((result-fut (retrieve-descr-info)))
-      (destructuring-bind (result err)
-          (fawait result-fut :timeout 2)
-        (is (null result))
-        (is (typep err 'knx-response-timeout-error))))))
+    (multiple-value-bind (result err) (retrieve-descr-info)
+      (is (null result))
+      (is (typep err 'knx-response-timeout-error)))))
 
 ;; --------------------------------------
 ;; connect request/response

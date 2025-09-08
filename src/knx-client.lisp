@@ -201,7 +201,6 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
         (tasks:task-start fun))))
 
 (defun %dosync (dispatcher fun)
-  "Returns `values'."
   (tasks:with-context ((act:context *async-handler*) dispatcher)
     (tasks:task-yield fun)))
 
