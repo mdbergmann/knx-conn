@@ -290,18 +290,18 @@ If the connection is established successfully, the channel-id will be stored in 
   (%assert-channel-id)
   (%stop-heartbeat)
   (log:info "Closing tunnel connection...")
-  (%%send-req (make-disconnect-request
-              *channel-id*
-              ip-client:*local-host-and-port*))
-  (%handle-response-fut
-   (%%receive-resp 'knx-disconnect-response)
-   (lambda (response)
-     (let ((status (disconnect-response-status response)))
-       (if (not (eql status 0))
-           (log:warn "Tunnel disconnection failed, status: ~a" status)
-           (progn
-             (log:info "Tunnel connection closed.")
-             (setf *channel-id* nil)))))))
+  (multiple-value-bind (response err)
+      (%send-receive (make-disconnect-request
+                      *channel-id*
+                      ip-client:*local-host-and-port*)
+                     'knx-disconnect-response)
+    (let ((status (disconnect-response-status response)))
+      (if (not (eql status 0))
+          (log:warn "Tunnel disconnection failed, status: ~a" status)
+          (progn
+            (log:info "Tunnel connection closed.")
+            (setf *channel-id* nil))))
+    (values response err)))
 
 (defun tunnel-connection-established-p ()
   "Returns `T' if a tunnel connection is established."

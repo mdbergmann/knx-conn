@@ -252,8 +252,8 @@ In case of this the log must be checked."
 
     (with-fixture env (nil t)
       (setf knx-client::*channel-id* 78)
-      (destructuring-bind (response err)
-          (fawait (close-tunnel-connection) :timeout 1.5)
+      (multiple-value-bind (response err)
+          (close-tunnel-connection)
         (is (null err))
         (is (typep response 'knx-disconnect-response))
         (is (null knx-client::*channel-id*))))
