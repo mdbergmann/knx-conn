@@ -489,10 +489,8 @@ In case of this the log must be checked."
     (answer ip-client:ip-send-knx-data t)
     (answer ip-client:ip-receive-knx-data
       `(,(make-tunnelling-ack-2 78 0) nil))
-    (destructuring-bind (ack _err)
-        (fawait
-         (send-read-request (make-group-address "0/4/10"))
-         :timeout 1.0)
+    (multiple-value-bind (ack _err)
+        (send-read-request (make-group-address "0/4/10"))
       (declare (ignore _err))
       (is (typep ack 'knx-tunnelling-ack))
       (is (= 78 (tunnelling-channel-id ack)))
@@ -508,12 +506,10 @@ In case of this the log must be checked."
     (answer ip-client:ip-send-knx-data t)
     (answer ip-client:ip-receive-knx-data
       (progn
-        (sleep 1.0) nil))
+        (sleep 1.2) nil))
     (let ((knx-client::*tunnel-ack-wait-timeout-secs* 0.5))
-      (destructuring-bind (ack err)
-          (fawait
-           (send-read-request (make-group-address "0/4/10"))
-           :timeout 2.0)
+      (multiple-value-bind (ack err)
+          (send-read-request (make-group-address "0/4/10"))
         (is (null ack))
         (is (typep err 'knx-response-timeout-error))))))
 
@@ -525,14 +521,14 @@ In case of this the log must be checked."
       (answer ip-client:ip-send-knx-data
         (incf send-count))
       (answer ip-client:ip-receive-knx-data
-        (cond
-          ((= send-count 1) (progn (sleep 1.0) nil))
-          ((= send-count 2) `(,(make-tunnelling-ack-2 78 0) nil))))
+        (progn
+          (format t "send-count: ~a~%" send-count)
+          (cond
+            ((= send-count 1) (progn (sleep 1.2) nil))
+            ((= send-count 2) `(,(make-tunnelling-ack-2 78 0) nil)))))
       (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1.0))
-        (destructuring-bind (ack err)
-            (fawait
-             (send-read-request (make-group-address "0/4/10"))
-             :timeout 5.0)
+        (multiple-value-bind (ack err)
+            (send-read-request (make-group-address "0/4/10"))
           (is (typep ack 'knx-tunnelling-ack))
           (is (null err))))
       (is-true (await-cond 5.0
@@ -552,18 +548,10 @@ In case of this the log must be checked."
         (when responses
           (let ((resp (pop responses)))
             `(,resp nil))))
-      (fcompleted
-          (send-read-request (make-group-address "0/4/10"))
-          (result)
-        (setf ack1 result))
+      (setf ack1 (send-read-request (make-group-address "0/4/10")))
       (sleep 0.05)
-      (fcompleted
-          (send-read-request (make-group-address "0/4/10"))
-          (result)
-        (setf ack2 result))
-      (is-true (await-cond 1.5
-                 (and (not (null ack1))
-                      (= 0 (tunnelling-seq-counter (car ack1))))))
-      (is-true (await-cond 1.5
-                 (and (not (null ack2))
-                      (= 1 (tunnelling-seq-counter (car ack2)))))))))
+      (setf ack2 (send-read-request (make-group-address "0/4/10")))
+      (is (and ack1
+               (= 0 (tunnelling-seq-counter ack1))))
+      (is (and ack2
+               (= 1 (tunnelling-seq-counter ack2)))))))
