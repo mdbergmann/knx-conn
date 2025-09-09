@@ -266,18 +266,19 @@ If the connection is established successfully, the channel-id will be stored in 
                      'knx-connect-response)
     (unless response
       (log:warn "No reponse received. Err: ~a" err))
-    (let ((status (connect-response-status response)))
-      (if (not (eql status 0))
-          (log:warn "Tunnel connection failed, status: ~a" status)
-          (progn
-            (log:info "Tunnel connection established.")
-            (log:info "Channel-id: ~a" (connect-response-channel-id response))
-            (setf *channel-id*
-                  (connect-response-channel-id response))
-            (setf *seq-counter* 0)
-            (when enable-heartbeat
-              (log:info "Starting heartbeat...")
-              (%start-heartbeat)))))
+    (when response
+      (let ((status (connect-response-status response)))
+        (if (not (eql status 0))
+            (log:warn "Tunnel connection failed, status: ~a" status)
+            (progn
+              (log:info "Tunnel connection established.")
+              (log:info "Channel-id: ~a" (connect-response-channel-id response))
+              (setf *channel-id*
+                    (connect-response-channel-id response))
+              (setf *seq-counter* 0)
+              (when enable-heartbeat
+                (log:info "Starting heartbeat...")
+                (%start-heartbeat))))))
     (values response err)))
 
 (defun close-tunnel-connection ()

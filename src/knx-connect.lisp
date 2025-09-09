@@ -69,7 +69,7 @@ This can be `NIL` only for short time window. Usually the KNXnet/IP gateway want
   (log:info "Starting async-receive...")
   (start-async-receive)
   (log:info "Establishing tunnel connection...")
-  (fawait (establish-tunnel-connection enable-heartbeat) :timeout 5)
+  (establish-tunnel-connection enable-heartbeat)
   (unless (tunnel-connection-established-p)
     (error "Could not establish tunnel connection!")))
 
@@ -79,7 +79,7 @@ This can be `NIL` only for short time window. Usually the KNXnet/IP gateway want
   (when *async-handler*
     (clr-tunnelling-request-listeners))
   (ignore-errors
-   (fawait (close-tunnel-connection) :timeout 5))
+   (close-tunnel-connection))
   (ignore-errors
     (ip-disconnect))
   (ignore-errors
@@ -97,13 +97,11 @@ This can be `NIL` only for short time window. Usually the KNXnet/IP gateway want
 Returns `future:future` which resolves to `T' is all went well and error condition on error."
   (assert (dpt:dpt-value-type-p dpt-type) nil "Unsupported dpt type!")
   (log:info "Writing value: ~a (~a) to ga: ~a" value dpt-type group-address)
-  (fmap
+  (multiple-value-bind (resp err)
       (send-write-request
        (address:make-group-address group-address)
        (dpt:make-dpt dpt-type value))
-      (result)
-    (destructuring-bind (resp err) result
-        (if resp t err))))
+    (if resp t err)))
 
 (defmacro %make-listener-fun (requested-ga dpt-type)
   `(lambda (req)

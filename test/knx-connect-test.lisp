@@ -183,25 +183,18 @@
   (setf *test-tunnelling-request-receive* (make-test-tunnelling-ack))
   (with-fixture request-value (0 t)
     (with-knx/ip ("12.23.34.45" :port 1234)
-      (is (eq t
-              (fawait
-               (write-value "1/2/3"
-                            'dpt:dpt-1.001
-                            t)
-               :timeout 5))))
-    (is-true (await-cond 1.5
-               (= (length (invocations
-                           'ip-client:ip-connect)) 1)))
-    (is-true (await-cond 1.5
-               (>= (length (invocations
-                            'ip-client:ip-receive-knx-data)) 1)))
+      (is (eq t (write-value "1/2/3"
+                             'dpt:dpt-1.001
+                             t))))
+    (is (= (length (invocations
+                    'ip-client:ip-connect)) 1))
+    (is (>= (length (invocations
+                     'ip-client:ip-receive-knx-data)) 1))
     ;; connect, write, disconnect
-    (is-true (await-cond 1.5
-               (>= (length (invocations
-                            'ip-client:ip-send-knx-data)) 3)))
-    (is-true (await-cond 1.5
-               (= (length (invocations
-                           'ip-client:ip-disconnect)) 1)))
+    (is (>= (length (invocations
+                     'ip-client:ip-send-knx-data)) 3))
+    (is (= (length (invocations
+                    'ip-client:ip-disconnect)) 1))
 
     (is-false ip-client::*conn*)
     (is-false knx-client::*channel-id*)))
@@ -219,9 +212,7 @@
         (mapcar (lambda (dpt-vals)
                   (let ((dpt-type (car dpt-vals))
                         (val (cdr dpt-vals)))
-                    (is-true (fawait
-                              (write-value "1/2/3" dpt-type val)
-                              :timeout 5))))
+                    (is-true (write-value "1/2/3" dpt-type val))))
                 dpts)))))
 
 (test with-knx/ip--write-value--err-no-ack
@@ -230,25 +221,19 @@
       (setf knx-client::*tunnel-ack-wait-timeout-secs* 1)
       (ignore-errors
        (is (typep 
-            (fawait
-             (write-value "1/2/3"
-                          'dpt:dpt-1.001
-                          t)
-             :timeout 5)
+            (write-value "1/2/3"
+                         'dpt:dpt-1.001
+                         t)
             'knx-client:knx-response-timeout-error))))
-    (is-true (await-cond 1.5
-               (= (length (invocations
-                           'ip-client:ip-connect)) 1)))
-    (is-true (await-cond 1.5
-               (>= (length (invocations
-                            'ip-client:ip-receive-knx-data)) 1)))
+    (is (= (length (invocations
+                    'ip-client:ip-connect)) 1))
+    (is (>= (length (invocations
+                     'ip-client:ip-receive-knx-data)) 1))
     ;; connect, write, disconnect
-    (is-true (await-cond 1.5
-               (>= (length (invocations
-                            'ip-client:ip-send-knx-data)) 3)))
-    (is-true (await-cond 1.5
-               (= (length (invocations
-                           'ip-client:ip-disconnect)) 1)))
+    (is (>= (length (invocations
+                     'ip-client:ip-send-knx-data)) 3))
+    (is (= (length (invocations
+                    'ip-client:ip-disconnect)) 1))
 
     (is-false ip-client::*conn*)
     (is-false knx-client::*channel-id*)))
@@ -329,7 +314,7 @@
     (with-knx/ip ("12.23.34.45")
       (let ((value
               (fawait (request-value "1/2/3" 'dpt:dpt-1.001)
-                      :timeout 10.0)))
+                      :timeout 5)))
         (is (eq value :on))
         ))))
 
