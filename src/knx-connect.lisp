@@ -94,7 +94,7 @@ This can be `NIL` only for short time window. Usually the KNXnet/IP gateway want
 
 (defun write-value (group-address dpt-type value)
   "Write the given `value` to the `group-address` with the given `dpt-type`.
-Returns `future:future` which resolves to `T' is all went well and error condition on error."
+Returns `T' if all went well and error condition on error."
   (assert (dpt:dpt-value-type-p dpt-type) nil "Unsupported dpt type!")
   (log:info "Writing value: ~a (~a) to ga: ~a" value dpt-type group-address)
   (multiple-value-bind (resp err)
