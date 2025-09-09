@@ -234,7 +234,7 @@ In case of this the log must be checked."
     
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
     (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))
-    (is-true (await-cond 2.5
+    (is-true (await-cond 1.5
                (>= (length (invocations 'knx-client:send-connection-state)) 1)))))
 
 ;; --------------------------------------
@@ -420,10 +420,8 @@ In case of this the log must be checked."
       (is (typep ack 'knx-tunnelling-ack))
       (is (= 78 (tunnelling-channel-id ack)))
       (is (= 0 (tunnelling-seq-counter ack))))
-    (is-true (await-cond 1.5
-               (>= (length (invocations 'ip-client:ip-send-knx-data)) 1)))
-    (is-true (await-cond 1.5
-               (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))))
+    (is (>= (length (invocations 'ip-client:ip-send-knx-data)) 1))
+    (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))))
 
 (test send-write-request--seq-counter--increment
   (with-fixture env (nil nil)
@@ -495,10 +493,8 @@ In case of this the log must be checked."
       (is (typep ack 'knx-tunnelling-ack))
       (is (= 78 (tunnelling-channel-id ack)))
       (is (= 0 (tunnelling-seq-counter ack))))
-    (is-true (await-cond 1.5
-               (= (length (invocations 'ip-client:ip-send-knx-data)) 1)))
-    (is-true (await-cond 1.5
-               (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1)))))
+    (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
+    (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))))
 
 (test send-read-request--ack-timeout
   (with-fixture env (nil t)
@@ -513,6 +509,7 @@ In case of this the log must be checked."
         (is (null ack))
         (is (typep err 'knx-response-timeout-error))))))
 
+;; flacky test
 (test send-read-request--ack-timeout--send-second-request--ok
   (with-fixture env (nil t)
     (setf *receive-knx-data-recur-delay-secs* 0.1)
@@ -531,8 +528,7 @@ In case of this the log must be checked."
             (send-read-request (make-group-address "0/4/10"))
           (is (typep ack 'knx-tunnelling-ack))
           (is (null err))))
-      (is-true (await-cond 5.0
-                 (= (length (invocations 'ip-client:ip-send-knx-data)) 2))))))
+      (is (= (length (invocations 'ip-client:ip-send-knx-data)) 2)))))
 
 (test send-tunnel-request--wait-for-ack--when-sending-new-request
   "As per KNX-IP spec, it is not allowed to send a new request before the
