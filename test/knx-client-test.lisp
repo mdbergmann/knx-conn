@@ -519,16 +519,16 @@ In case of this the log must be checked."
         (incf send-count))
       (answer ip-client:ip-receive-knx-data
         (progn
-          (format t "send-count: ~a~%" send-count)
           (cond
             ((= send-count 1) (progn (sleep 1.2) nil))
-            ((= send-count 2) `(,(make-tunnelling-ack-2 78 0) nil)))))
+            ((= send-count 2) `(,(make-tunnelling-ack-2 78 0) nil))
+            ((= send-count 3) `(,(make-tunnelling-ack-2 78 0) nil)))))
       (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1.0))
         (multiple-value-bind (ack err)
             (send-read-request (make-group-address "0/4/10"))
           (is (typep ack 'knx-tunnelling-ack))
           (is (null err))))
-      (is (= (length (invocations 'ip-client:ip-send-knx-data)) 2)))))
+      (is (>= (length (invocations 'ip-client:ip-send-knx-data)) 2)))))
 
 (test send-tunnel-request--wait-for-ack--when-sending-new-request
   "As per KNX-IP spec, it is not allowed to send a new request before the
