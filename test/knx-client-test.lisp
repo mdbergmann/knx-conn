@@ -28,8 +28,7 @@
                       (:shared (:workers 2)
                        :receiver (:workers 1)
                        :notifier (:worker 1)
-                       :waiter (:workers 1)
-                       :response-awaiter (:worker 1))))))
+                       :sender (:worker 1))))))
     (with-mocks ()
       (answer ip-client:ip-connect
         (progn

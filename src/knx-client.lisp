@@ -221,7 +221,7 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 (defun %send-receive (req resp-type &optional (resp-wait-time
                                                *response-wait-timeout-secs*))
   "Send request and internally waits until response is received, which is then returned."
-  (%dosync :response-awaiter
+  (%dosync :sender
            (lambda ()
              (%%send-req req)
              (destructuring-bind (response err)
@@ -467,14 +467,13 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
                           now start-time resp-wait-time end-time)
                (>= now end-time)))
            (wait-and-call-again (resp-type start-time resp-wait-time)
-             (%doasync :waiter
-                       (lambda ()
-                         (log:trace "Executing on: ~a" (bt2:current-thread))
-                         (sleep 0.05) ;deliberate wait or the loop will be too fast
-                         (log:trace "Calling wait-on-resp...")
-                         (! self `(:wait-on-resp
-                                   . (,resp-type ,start-time ,resp-wait-time))
-                            sender)))))
+             (timeutils:make-timer
+              0.05 (lambda ()
+                     (log:trace "Executing on: ~a" (bt2:current-thread))
+                     (log:trace "Calling wait-on-resp...")
+                     (! self `(:wait-on-resp
+                               . (,resp-type ,start-time ,resp-wait-time))
+                        sender)))))
     (destructuring-bind (resp-type start-time resp-wait-time) wait-args
       (if (null (gethash resp-type *awaited-things*))
           (setf (gethash resp-type *awaited-things*) 'awaiting))

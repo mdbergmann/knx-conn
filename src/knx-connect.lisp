@@ -23,12 +23,11 @@
     (log:info "Creating actor system...")
     (setf *asys* (asys:make-actor-system
                   '(:dispatchers
-                    (:shared (:workers 2 :strategy :round-robin)
+                    (:shared (:workers 2 :strategy :round-robin) ;; *async-handler*
                      :receiver (:workers 1) ;; reading IP (UDP) data
-                     :waiter (:workers 1)   ;; delay for :wait-on-resp
-                     :notifier (:worker 1)  ;; for notifying listeners                     
+                     :notifier (:worker 1)  ;; for notifying listeners
+                     :sender (:worker 1) ;; sender queue with ack awaiting
                      :read-request (:workers 1) ;; higher-level read-request (below)
-                     :response-awaiter (:worker 1) ;; used for awaiting ack
                      ))))))
 
 (defun %shutdown-asys ()

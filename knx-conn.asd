@@ -62,6 +62,11 @@
                                                            '#:knx-conn.tests))))
 
 #|
+
+- update and check e2e test
+- update and test chipi knx binding
+
+
 TODOs:
 => - tests for parsing tunnel-request
 - connstate (heartbeat): check for 3 failed requests
