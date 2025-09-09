@@ -230,19 +230,10 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
                          :sleep-time .05)
                (cons response err)))))
 
-(defun %handle-response-fut (fut handle-fun)
-  (fcompleted fut
-      (received)
-    (destructuring-bind (response _err) received
-      (declare (ignore _err))
-      (when response
-        (funcall handle-fun response))
-      (unless response
-        (log:warn "No response received.")))))
-
 (defun retrieve-descr-info ()
   "Retrieve the description information from the KNXnet/IP gateway. The response to this request will be received asynchronously.
 Returns `(values response err)'.
+The `response' may be `NIL' on error, in which case `err' is filled.
 The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol."
   (log:info "Retrieving description information...")
   (%send-receive (make-descr-request *hpai-unbound-addr*)
@@ -251,6 +242,8 @@ The error condition will be of type `knx-receive-error` and reflects just an err
 (defun send-connection-state ()
   "Sends a connection-state request to the KNXnet/IP gateway. The response to this request will be received asynchronously.
 Returns `(values response err)'.
+The `response' may be `NIL' on error, in which case `err' is filled.
+
 This request should be sent every some seconds (i.e. 60) as a heart-beat to keep the connection alive."
   (%assert-channel-id)
   (%send-receive (make-connstate-request
@@ -261,7 +254,8 @@ This request should be sent every some seconds (i.e. 60) as a heart-beat to keep
 (defun establish-tunnel-connection (&optional (enable-heartbeat t))
   "Send a tunnelling connection to the KNXnet/IP gateway. The response to this request will be received asynchronously.
 Returns `(values response err)'.
-The error condition will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol.
+The `response' may be `NIL' on error, in which case `err' is filled.
+The error condition `err' will be of type `knx-receive-error` and reflects just an error of transport or parsing. The response itself may contain an error status of the KNX protocol.
 
 If the connection is established successfully, the channel-id will be stored in the global variable `*channel-id*`."
   (log:info "Establishing tunnel connection...")
@@ -311,7 +305,7 @@ If the connection is established successfully, the channel-id will be stored in 
 ;; tunnelling-request functions
 ;; ---------------------------------
 
-(defun %send-tunnel-request (req &key (retries 1))
+(defun %send-tunnel-request (req &key (retries 2))
   "Sends given tunnel request and waits for tunnel-ack, resends request `retries' times if ack doesn't come in time.
 
 A tunnelling-request has to be ACK within 1 second and be repeated once if the ACK is not received."
@@ -319,31 +313,22 @@ A tunnelling-request has to be ACK within 1 second and be repeated once if the A
                          (tunnelling-seq-counter req))))
     (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
       (labels ((timeout-or-retry (count)
-                 (%%send-req req)
-                 (multiple-value-bind (received fut)
-                     (fawait (%%receive-resp recv-type ack-timeout) :timeout ack-timeout)
-                   (log:trace "fut+received: ~a/~a" fut received)
-      	           (destructuring-bind (resp err)
-                       (or received
-                           (list nil
-                                 (make-timeout-error
-                                  "Timeout waiting for response of type ~a"
-                                  recv-type)))
-                     (declare (ignore resp))
-                     (if (and err (typep err 'knx-response-timeout-error))
-                         (progn
-                           (log:warn "Received no ACK in time, resending request (try ~a)."
-                                     (1+ count))
-                           (if (>= count retries)
-                               (progn
-                                 (log:error
-                                  "Retried sending request ~a times but no ACK for req: ~a"
-                                  count req)
-                                 fut)
-                               (timeout-or-retry (1+ count))))
-                         (progn
-                           (log:debug "Result: ~a" received)
-                           fut))))))
+                 (multiple-value-bind (resp err)
+                     (%send-receive req recv-type ack-timeout)
+                   (if (and err (typep err 'knx-response-timeout-error))
+                       (progn
+                         (log:warn "Received no ACK in time, resending request (try ~a)."
+                                   (1+ count))
+                         (if (>= count retries)
+                             (progn
+                               (log:error
+                                "Retried sending request ~a times but no ACK for req: ~a"
+                                count req)
+                               (values resp err))
+                             (timeout-or-retry (1+ count))))
+                       (progn
+                         (log:debug "Result: ~a" resp)
+                         (values resp err))))))
         (timeout-or-retry 0)))))
 
 (defun send-write-request (group-address dpt)

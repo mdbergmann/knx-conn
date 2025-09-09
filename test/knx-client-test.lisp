@@ -406,16 +406,16 @@ In case of this the log must be checked."
 ;; tunneling request sending
 ;; --------------------------------------
 
-(test send-write-request--returns-future--resolves-with-ack
+(test send-write-request--resolves-with-ack
   (with-fixture env (nil t)
     (setf *receive-knx-data-recur-delay-secs* .1)
     (setf knx-client::*channel-id* 78)
     (answer ip-client:ip-send-knx-data t)
     (answer ip-client:ip-receive-knx-data
       `(,(make-tunnelling-ack-2 78 0) nil))
-    (destructuring-bind (ack _err)
-        (fresult (send-write-request (make-group-address "0/4/10")
-                                     (make-dpt1 :switch :on)))
+    (multiple-value-bind (ack _err)
+        (send-write-request (make-group-address "0/4/10")
+                            (make-dpt1 :switch :on))
       (declare (ignore _err))
       (is (typep ack 'knx-tunnelling-ack))
       (is (= 78 (tunnelling-channel-id ack)))
@@ -475,14 +475,12 @@ In case of this the log must be checked."
       (progn
         (sleep 1.0) nil))
     (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1.0))
-      (destructuring-bind (ack err)
-          (fawait
-           (send-write-request (make-group-address "0/4/10")
-                               (make-dpt1 :switch :on))
-           :timeout 5.0)
+      (multiple-value-bind (ack err)
+          (send-write-request (make-group-address "0/4/10")
+                              (make-dpt1 :switch :on))
         (is (null ack))
         (is (typep err 'knx-response-timeout-error))
-        (is (= 2 (length (invocations 'ip-client:ip-send-knx-data))))))))
+        (is (= 3 (length (invocations 'ip-client:ip-send-knx-data))))))))
 
 (test send-read-request--resolves-with-ack
   (with-fixture env (nil t)
