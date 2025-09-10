@@ -63,7 +63,7 @@
 
 #|
 
-- update and check e2e test
+OK - update and check e2e test
 - update and test chipi knx binding
 
 

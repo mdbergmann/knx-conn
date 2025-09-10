@@ -169,9 +169,8 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
                            *heartbeat-interval-secs*
                            *heartbeat-interval-secs*
                            (lambda ()
-                             (log:debug "Scheduling sending heartbeat...")
-                             (%async-handler-knx-heartbeat)
-                             ;;(! *async-handler* '(:heartbeat . nil))
+                             (log:debug "Telling *async-handler* to make heartbeat...")
+                             (! *async-handler* '(:heartbeat . nil))
                              )
                            *heartbeat-timer-sig*)))
 
@@ -512,9 +511,11 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
 
 (defun %async-handler-knx-heartbeat ()
   ;; extended wait timeout according to spec
-  (let ((*response-wait-timeout-secs*
-          +heartbeat-resp-wait-timeout-secs+))
-    (send-connection-state)))
+  (%doasync :heartbeat
+            (lambda ()
+              (let ((*response-wait-timeout-secs*
+                      +heartbeat-resp-wait-timeout-secs+))
+                (send-connection-state)))))
 
 (defun %async-handler-receive (msg)
   "Allows the following messages:
