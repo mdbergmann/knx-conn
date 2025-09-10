@@ -169,7 +169,10 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
                            *heartbeat-interval-secs*
                            *heartbeat-interval-secs*
                            (lambda ()
-                             (! *async-handler* '(:heartbeat . nil)))
+                             (log:debug "Scheduling sending heartbeat...")
+                             (%async-handler-knx-heartbeat)
+                             ;;(! *async-handler* '(:heartbeat . nil))
+                             )
                            *heartbeat-timer-sig*)))
 
 (defun %stop-heartbeat ()
@@ -209,10 +212,12 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 ;; ---------------------------------
 
 (defun %%send-req (req)
+  (log:debug "Telling *async-handler* to send request (~a)..." (type-of req))
   (! *async-handler* `(:send . ,req)))
 
 (defun %%receive-resp (resp-type &optional (resp-wait-time
                                            *response-wait-timeout-secs*))
+  (log:debug "Asking *async-handler* to receive response (~a)..." resp-type)
   (? *async-handler* `(:wait-on-resp
                        . (,resp-type
                           ,(get-universal-time)
@@ -225,9 +230,11 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
            (lambda ()
              (%%send-req req)
              (destructuring-bind (response err)
-                 (fawait (%%receive-resp resp-type resp-wait-time)
-                         :timeout (+ resp-wait-time 5) ;; we don't want this to timeout
-                         :sleep-time .05)
+                 (or (fawait (%%receive-resp resp-type resp-wait-time)
+                             :timeout (+ resp-wait-time 2) ;; we give some more space here
+                             :sleep-time .05)
+                     (list nil
+                           (make-timeout-error "Timeout during awaiting a response (~a)!" resp-type)))
                (cons response err)))))
 
 (defun retrieve-descr-info ()
@@ -246,6 +253,7 @@ The `response' may be `NIL' on error, in which case `err' is filled.
 
 This request should be sent every some seconds (i.e. 60) as a heart-beat to keep the connection alive."
   (%assert-channel-id)
+  (log:info "Sending connection state...")
   (%send-receive (make-connstate-request
                   *channel-id*
                   ip-client:*local-host-and-port*)
@@ -316,20 +324,26 @@ A tunnelling-request has to be ACK within 1 second and be repeated once if the A
       (labels ((timeout-or-retry (count)
                  (multiple-value-bind (resp err)
                      (%send-receive req recv-type ack-timeout)
-                   (if (and err (typep err 'knx-response-timeout-error))
-                       (progn
-                         (log:warn "Received no ACK in time, resending request (try ~a)."
-                                   (1+ count))
-                         (if (>= count retries)
-                             (progn
-                               (log:error
-                                "Retried sending request ~a times but no ACK for req: ~a"
-                                count req)
-                               (values resp err))
-                             (timeout-or-retry (1+ count))))
-                       (progn
-                         (log:debug "Result: ~a" resp)
-                         (values resp err))))))
+                   (cond
+                     ((and err (typep err 'knx-response-timeout-error))
+                      (progn
+                        (log:warn "Received no ACK in time, resending request (try ~a)."
+                                  (1+ count))
+                        (if (>= count retries)
+                            (progn
+                              (log:error
+                               "Retried sending request ~a times but no ACK for req: ~a"
+                               count req)
+                              (values resp err))
+                            (timeout-or-retry (1+ count)))))
+                     ((not (null err))
+                      (progn
+                        (log:error "Error waiting for ack: ~a (~a)" err (type-of err))
+                        (values resp err)))
+                     (t
+                      (progn
+                        (log:debug "Result: ~a" resp)
+                        (values resp err)))))))
         (timeout-or-retry 0)))))
 
 (defun send-write-request (group-address dpt)
@@ -469,8 +483,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
            (wait-and-call-again (resp-type start-time resp-wait-time)
              (timeutils:make-timer
               0.05 (lambda ()
-                     (log:trace "Executing on: ~a" (bt2:current-thread))
-                     (log:trace "Calling wait-on-resp...")
+                     (log:trace "Calling wait-on-resp on: ~a" (bt2:current-thread))
                      (! self `(:wait-on-resp
                                . (,resp-type ,start-time ,resp-wait-time))
                         sender)))))
