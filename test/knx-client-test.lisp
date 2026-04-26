@@ -25,11 +25,11 @@
           knx-client::*channel-id*)
         (test-asys (asys:make-actor-system
                     '(:dispatchers
-                      (:shared (:workers 0)
+                      (:shared (:workers 2)
                        :receiver (:workers 1)
-                       :notifier (:worker 1)
-                       :heartbeat (:worker 1)
-                       :sender (:worker 1))))))
+                       :notifier (:workers 1)
+                       :heartbeat (:workers 1)
+                       :sender (:workers 1))))))
     (with-mocks ()
       (answer ip-client:ip-connect
         (progn
