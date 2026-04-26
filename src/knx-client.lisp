@@ -28,6 +28,7 @@
            #:*default-receive-knx-data-recur-delay-secs*
            #:*response-wait-timeout-secs*
            #:*group-address-dpt-mapping*
+           #:*on-disconnected*
            #:reset-client-vars
            ;; async handler
            #:*async-handler*
@@ -136,6 +137,15 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 (defvar *heartbeat-timer-sig* nil
   "The signature of the heartbeat timer.")
 
+(defvar *on-disconnected* nil
+  "Optional 1-arity function, invoked when the tunnel connection is lost
+outside of a deliberate `close-tunnel-connection`. The argument is a keyword
+reason: `:gateway-disconnect-request` or `:heartbeat-failure`.
+
+Called from the async-handler dispatcher; the function should return quickly
+and schedule any heavy recovery work (e.g. reconnect attempts) on its own
+thread. Errors signalled from the hook are caught and logged.")
+
 ;; ----------- helper functions ------------
 
 (defun reset-client-vars ()
@@ -180,7 +190,24 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
     (let ((scheduler (asys:scheduler
                       (ac:system
                        (act:context *async-handler*)))))
-      (wt:cancel scheduler *heartbeat-timer-sig*))))
+      (wt:cancel scheduler *heartbeat-timer-sig*))
+    (setf *heartbeat-timer-sig* nil)))
+
+(defun %trigger-disconnected (reason)
+  "Tear down tunnel state after an unexpected disconnect and notify the hook.
+Idempotent: a no-op when `*channel-id*' is already `NIL', so heartbeat failure
+and a follow-up gateway disconnect-request won't fire the hook twice."
+  (when *channel-id*
+    (log:info "Tunnel disconnected (~a). Tearing down state." reason)
+    (handler-case (%stop-heartbeat)
+      (error (c)
+        (log:debug "Could not stop heartbeat during disconnect handling: ~a" c)))
+    (setf *channel-id* nil)
+    (setf *seq-counter* 0)
+    (when *on-disconnected*
+      (handler-case (funcall *on-disconnected* reason)
+        (error (c)
+          (log:warn "Error in *on-disconnected* hook: ~a" c))))))
 
 ;; request listeners can be added during runtime
 ;; so we have to take care of thread-safety
@@ -252,7 +279,7 @@ The `response' may be `NIL' on error, in which case `err' is filled.
 
 This request should be sent every some seconds (i.e. 60) as a heart-beat to keep the connection alive."
   (%assert-channel-id)
-  (log:info "Sending connection state...")
+  (log:debug "Sending connection state...")
   (%send-receive (make-connstate-request
                   *channel-id*
                   ip-client:*local-host-and-port*)
@@ -460,8 +487,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
          (setf received-type (cons received-type
                                    (tunnelling-seq-counter received))))
         (knx-disconnect-request
-         (setf *channel-id* nil)
-         (setf *seq-counter* 0))
+         (%trigger-disconnected :gateway-disconnect-request))
         (knx-connect-response
          (log:debug "Received connect response: ~a" received)))
       (if (null (gethash received-type *awaited-things*))
@@ -509,13 +535,34 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
              (reply thing)
              (remhash resp-type *awaited-things*))))))))
 
+(defun %heartbeat-failure-p (result)
+  "Decide whether the heartbeat task `result' indicates a failed heartbeat.
+`result' is either `(cons response err)' returned by `send-connection-state',
+`(cons :handler-error condition)' if the task itself errored, or some other
+value when the call has been mocked. Anything we can't positively interpret
+as success is treated as a non-failure (the next heartbeat will retry)."
+  (cond
+    ((not (consp result)) nil)
+    ((eq (car result) :handler-error) t)
+    (t (destructuring-bind (response . err) result
+         (or (and err (not response))
+             (null response)
+             (and (typep response 'knx-connstate-response)
+                  (not (zerop (connstate-response-status response)))))))))
+
+(defun %on-heartbeat-complete (result)
+  (when (%heartbeat-failure-p result)
+    (log:warn "Heartbeat failed: ~a" result)
+    (%trigger-disconnected :heartbeat-failure)))
+
 (defun %async-handler-knx-heartbeat ()
   ;; extended wait timeout according to spec
   (%doasync :heartbeat
             (lambda ()
               (let ((*response-wait-timeout-secs*
                       +heartbeat-resp-wait-timeout-secs+))
-                (send-connection-state)))))
+                (send-connection-state)))
+            #'%on-heartbeat-complete))
 
 (defun %async-handler-receive (msg)
   "Allows the following messages:

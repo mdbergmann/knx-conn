@@ -23,6 +23,8 @@
            #:make-connstate-request
            #:knx-connstate-request
            #:knx-connstate-response
+           #:connstate-response-channel-id
+           #:connstate-response-status
            ))
 
 

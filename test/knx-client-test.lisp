@@ -551,3 +551,102 @@ In case of this the log must be checked."
                (= 0 (tunnelling-seq-counter ack1))))
       (is (and ack2
                (= 1 (tunnelling-seq-counter ack2)))))))
+
+;; --------------------------------------
+;; on-disconnected hook
+;; --------------------------------------
+
+(def-fixture with-disconnect-hook ()
+  (let ((orig-hook knx-client:*on-disconnected*))
+    (unwind-protect
+         (&body)
+      (setf knx-client:*on-disconnected* orig-hook))))
+
+(test heartbeat-failure-p--positive-and-negative-cases
+  ;; non-cons (mocked answer) is treated as success — next tick will retry
+  (is-false (knx-client::%heartbeat-failure-p t))
+  (is-false (knx-client::%heartbeat-failure-p nil))
+  ;; task-level error
+  (is-true (knx-client::%heartbeat-failure-p
+            (cons :handler-error 'some-error)))
+  ;; timeout / no response
+  (is-true (knx-client::%heartbeat-failure-p
+            (cons nil (make-condition 'simple-error
+                                      :format-control "boom"))))
+  ;; non-zero gateway status
+  (is-true (knx-client::%heartbeat-failure-p
+            (cons (connect::%make-connstate-response 78 #x21) nil)))
+  ;; healthy response
+  (is-false (knx-client::%heartbeat-failure-p
+             (cons (connect::%make-connstate-response 78 0) nil))))
+
+(test trigger-disconnected--is-idempotent-when-no-channel
+  (with-fixture with-disconnect-hook ()
+    (let ((calls 0))
+      (setf knx-client:*on-disconnected*
+            (lambda (reason) (declare (ignore reason)) (incf calls)))
+      (let ((knx-client::*channel-id* nil))
+        (knx-client::%trigger-disconnected :gateway-disconnect-request)
+        (is (= 0 calls))))))
+
+(test trigger-disconnected--clears-state-and-fires-hook
+  (with-fixture with-disconnect-hook ()
+    (with-fixture env (nil nil)
+      (let ((reasons))
+        (setf knx-client:*on-disconnected*
+              (lambda (r) (push r reasons)))
+        (setf knx-client::*channel-id* 78)
+        (setf knx-client::*seq-counter* 5)
+        (knx-client::%trigger-disconnected :heartbeat-failure)
+        (is (null knx-client::*channel-id*))
+        (is (= 0 knx-client::*seq-counter*))
+        (is (equal reasons '(:heartbeat-failure)))))))
+
+(test trigger-disconnected--double-call-only-fires-once
+  (with-fixture with-disconnect-hook ()
+    (with-fixture env (nil nil)
+      (let ((calls 0))
+        (setf knx-client:*on-disconnected*
+              (lambda (reason) (declare (ignore reason)) (incf calls)))
+        (setf knx-client::*channel-id* 78)
+        (knx-client::%trigger-disconnected :gateway-disconnect-request)
+        (knx-client::%trigger-disconnected :heartbeat-failure)
+        (is (= 1 calls))))))
+
+(test disconnect-request--from-gateway--fires-hook
+  (with-fixture with-disconnect-hook ()
+    (with-mocks ()
+      (let ((req (make-disconnect-request 78 (cons #(12 23 34 45) 3671)))
+            (reasons))
+        (answer ip-client:ip-receive-knx-data `(,req nil))
+        (setf knx-client::*channel-id* 78)
+        (setf knx-client:*on-disconnected*
+              (lambda (r) (push r reasons)))
+        (with-fixture env (nil t)
+          (is-true (await-cond 1.5 (not (null reasons))))
+          (is (equal reasons '(:gateway-disconnect-request)))
+          (is (null knx-client::*channel-id*)))))))
+
+(test on-heartbeat-complete--no-fire-on-success
+  (with-fixture with-disconnect-hook ()
+    (with-fixture env (nil nil)
+      (let ((calls 0))
+        (setf knx-client:*on-disconnected*
+              (lambda (reason) (declare (ignore reason)) (incf calls)))
+        (setf knx-client::*channel-id* 78)
+        (knx-client::%on-heartbeat-complete
+         (cons (connect::%make-connstate-response 78 0) nil))
+        (is (= 0 calls))
+        (is (= 78 knx-client::*channel-id*))))))
+
+(test on-heartbeat-complete--fires-on-non-zero-status
+  (with-fixture with-disconnect-hook ()
+    (with-fixture env (nil nil)
+      (let ((reasons))
+        (setf knx-client:*on-disconnected*
+              (lambda (r) (push r reasons)))
+        (setf knx-client::*channel-id* 78)
+        (knx-client::%on-heartbeat-complete
+         (cons (connect::%make-connstate-response 78 #x21) nil))
+        (is (equal reasons '(:heartbeat-failure)))
+        (is (null knx-client::*channel-id*))))))
