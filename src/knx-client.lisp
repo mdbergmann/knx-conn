@@ -74,7 +74,7 @@
   "Default timeout for waiting for a response.
 Times must be in full seconds. Float values will be truncated.")
 
-(defparameter *tunnel-ack-wait-timeout-secs* 1
+(defparameter *tunnel-ack-wait-timeout-secs* 2
   "Timeout for waiting for a tunnelling ack response.
 Time must be in full seconds. Float values will be truncated.")
 
@@ -463,7 +463,12 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
              (log:info "Tunnelling ind 2: ~a -> ~a = ~a (~a)"
                        addr-src-string ga-dest-string cemi-data label)))))
       ((eql msc +cemi-mc-l_data.con+)
-       (log:debug "Tunnelling confirmation.")))
+       (let* ((cemi (tunnelling-request-cemi received))
+              (ga (address-string-rep (cemi-destination-addr cemi)))
+              (err-p (getf (ctrl1-rep cemi) :error-confirmation)))
+         (if err-p
+             (log:warn "Negative L_Data.con (bus write failed) for ga ~a" ga)
+             (log:debug "L_Data.con OK for ga ~a" ga)))))
     (progn
       (log:debug "Notifying (~a) listeners of generic L_Data request..."
                  (length *tunnel-request-listeners*))
