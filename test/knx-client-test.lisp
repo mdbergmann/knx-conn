@@ -589,6 +589,28 @@ In case of this the log must be checked."
         (knx-client::%trigger-disconnected :gateway-disconnect-request)
         (is (= 0 calls))))))
 
+(test send-tunnel-request--retries-exhausted--fires-disconnect-hook
+  "When the gateway stops ACKing tunnelling requests, the retry exhaustion
+must fire `*on-disconnected*` with `:tunnel-ack-failure` so a reconnect
+hook can take over."
+  (with-fixture with-disconnect-hook ()
+    (with-fixture env (nil t)
+      (let ((reasons))
+        (setf knx-client:*on-disconnected*
+              (lambda (r) (push r reasons)))
+        (setf knx-client::*channel-id* 78)
+        (answer ip-client:ip-send-knx-data t)
+        (answer ip-client:ip-receive-knx-data
+          (progn (sleep 1.0) nil))
+        (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1.0))
+          (multiple-value-bind (ack err)
+              (send-write-request (make-group-address "0/4/10")
+                                  (make-dpt1 :switch :on))
+            (is (null ack))
+            (is (typep err 'knx-response-timeout-error))))
+        (is (equal reasons '(:tunnel-ack-failure)))
+        (is (null knx-client::*channel-id*))))))
+
 (test trigger-disconnected--clears-state-and-fires-hook
   (with-fixture with-disconnect-hook ()
     (with-fixture env (nil nil)

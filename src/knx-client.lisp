@@ -140,7 +140,9 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 (defvar *on-disconnected* nil
   "Optional 1-arity function, invoked when the tunnel connection is lost
 outside of a deliberate `close-tunnel-connection`. The argument is a keyword
-reason: `:gateway-disconnect-request` or `:heartbeat-failure`.
+reason: `:gateway-disconnect-request`, `:heartbeat-failure`, or
+`:tunnel-ack-failure` (gateway accepted heartbeats but stopped ACKing
+tunnelling requests after the configured number of retries).
 
 Called from the async-handler dispatcher; the function should return quickly
 and schedule any heavy recovery work (e.g. reconnect attempts) on its own
@@ -360,6 +362,12 @@ A tunnelling-request has to be ACK within 1 second and be repeated once if the A
                               (log:error
                                "Retried sending request ~a times but no ACK for req: ~a"
                                count req)
+                              ;; Gateway is silent on the data path while the
+                              ;; control path may still be alive (heartbeats
+                              ;; succeeding). Force a teardown so any
+                              ;; configured `*on-disconnected*` hook can
+                              ;; reconnect; otherwise the channel stays stuck.
+                              (%trigger-disconnected :tunnel-ack-failure)
                               (values resp err))
                             (timeout-or-retry (1+ count)))))
                      ((not (null err))
