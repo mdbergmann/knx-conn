@@ -92,15 +92,19 @@ This can be `NIL` only for short time window. Usually the KNXnet/IP gateway want
 ;; convenience functions and macro DSL
 ;; ---------------------------------
 
-(defun write-value (group-address dpt-type value)
+(defun write-value (group-address dpt-type value &key (wait :con))
   "Write the given `value` to the `group-address` with the given `dpt-type`.
-Returns `T' if all went well and error condition on error."
+Returns `T' if all went well and error condition on error.
+
+`wait' selects how the call blocks (forwarded to `send-write-request'):
+`:none', `:ack', or `:con' (default — Calimero `WaitForCon' equivalent)."
   (assert (dpt:dpt-value-type-p dpt-type) nil "Unsupported dpt type!")
   (log:info "Writing value: ~a (~a) to ga: ~a" value dpt-type group-address)
   (multiple-value-bind (resp err)
       (send-write-request
        (address:make-group-address group-address)
-       (dpt:make-dpt dpt-type value))
+       (dpt:make-dpt dpt-type value)
+       :wait wait)
     (if resp t err)))
 
 (defmacro %make-listener-fun (requested-ga dpt-type)

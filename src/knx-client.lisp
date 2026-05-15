@@ -38,6 +38,10 @@
            ;; conditions
            #:knx-receive-error
            #:knx-response-timeout-error
+           #:knx-negative-confirmation-error
+           #:knx-negative-confirmation-error-group-address
+           ;; con-wait
+           #:*con-wait-timeout-secs*
            ))
 
 (in-package :knx-conn.knx-client)
@@ -59,6 +63,13 @@
              (format s "KNX timeout error: ~a"
                      (simple-condition-format-control c)))))
 
+(define-condition knx-negative-confirmation-error (simple-error)
+  ((group-address :initarg :group-address
+                  :reader knx-negative-confirmation-error-group-address))
+  (:report (lambda (c s)
+             (format s "KNX negative L_Data.con (bus write failed) for ga ~a"
+                     (knx-negative-confirmation-error-group-address c)))))
+
 (defun make-timeout-error (fmtstring args)
   (make-condition
    'knx-response-timeout-error
@@ -77,6 +88,10 @@ Times must be in full seconds. Float values will be truncated.")
 (defparameter *tunnel-ack-wait-timeout-secs* 2
   "Timeout for waiting for a tunnelling ack response.
 Time must be in full seconds. Float values will be truncated.")
+
+(defparameter *con-wait-timeout-secs* 3
+  "Timeout for waiting for the cEMI L_Data.con after a tunnelling-request
+has been ACKed by the gateway. Matches Calimero's CONFIRMATION_TIMEOUT.")
 
 (defconstant +heartbeat-resp-wait-timeout-secs+ 10
   "Timeout for waiting for a heartbeat response.")
@@ -134,6 +149,14 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 (defvar *awaited-things* (make-hash-table :test #'equalp)
   "Pool of received messages that are not handled otherwise.")
 
+(defvar *pending-cons* nil
+  "List of pending L_Data.con waits, mutated only by the async-handler
+actor (serialized with `*awaited-things*'). Each entry is a cons
+(req-cemi . result-place). `result-place' is a mutable cons whose CAR is
+`:pending', `:positive', or `:negative'; CDR holds the matched .con once
+resolved. Senders poll the place; the single-word state transition is
+safe under the existing actor-serialized write model.")
+
 (defvar *heartbeat-timer-sig* nil
   "The signature of the heartbeat timer.")
 
@@ -160,6 +183,7 @@ thread. Errors signalled from the hook are caught and logged.")
   (setf *group-address-dpt-mapping* nil)
   (setf *awaited-things*
         (make-hash-table :test #'equalp))
+  (setf *pending-cons* nil)
   t)
 
 (defun %assert-channel-id ()
@@ -339,50 +363,160 @@ If the connection is established successfully, the channel-id will be stored in 
   (integerp *channel-id*))
 
 ;; ---------------------------------
+;; pending L_Data.con correlation
+;; ---------------------------------
+
+(defun %cemi-payload-bytes (cemi)
+  "Return a comparable byte sequence for the cEMI's data slot.
+Outgoing frames carry a `dpt' object (use its `to-byte-seq' method),
+incoming `.con's carry a byte array (already in that form)."
+  (let ((d (cemi-data cemi)))
+    (cond
+      ((null d) #())
+      ((arrayp d) d)
+      (t (knxobj:to-byte-seq d)))))
+
+(defun %apci-same-kind-p (a b)
+  "True if A and B are the same APCI kind (read/write/response). The
+struct types are distinct between gv-read / gv-write / gv-response."
+  (eq (type-of a) (type-of b)))
+
+(defun %con-matches-p (req-cemi con-cemi)
+  "Match outgoing L_Data.req against an incoming L_Data.con on
+destination-address, APCI kind, payload bytes, with Calimero's hop-count
+tolerance (equal or req-hop-count = con-hop-count + 1, e.g. eibd)."
+  (and (equal (address-string-rep (cemi-destination-addr req-cemi))
+              (address-string-rep (cemi-destination-addr con-cemi)))
+       (%apci-same-kind-p (cemi-apci req-cemi) (cemi-apci con-cemi))
+       (equalp (%cemi-payload-bytes req-cemi)
+               (%cemi-payload-bytes con-cemi))
+       (let ((rh (getf (ctrl2-rep req-cemi) :hop-count))
+             (ch (getf (ctrl2-rep con-cemi) :hop-count)))
+         (or (= rh ch) (= rh (1+ ch))))))
+
+(defun %register-pending-con (req-cemi)
+  "Ask the async-handler to register a pending-con entry for REQ-CEMI
+and return the mutable result place. Mutating `*pending-cons*' from the
+actor only keeps it single-threaded, no lock needed."
+  (fawait (? *async-handler* `(:register-pending-con . ,req-cemi))
+          :timeout 2 :sleep-time .01))
+
+(defun %deregister-pending-con (place)
+  "Fire-and-forget removal of a pending-con entry by its place identity."
+  (when *async-handler*
+    (! *async-handler* `(:deregister-pending-con . ,place))))
+
+(defun %resolve-pending-con (con-cemi)
+  "Walk pending entries oldest-first; on match, fill the place and
+remove. Returns T on match. Must be called from the actor thread."
+  (let ((target (find-if (lambda (entry)
+                           (%con-matches-p (car entry) con-cemi))
+                         *pending-cons*
+                         :from-end t)))
+    (when target
+      (setf *pending-cons* (delete target *pending-cons* :test #'eq))
+      (let* ((place (cdr target))
+             (err-p (getf (ctrl1-rep con-cemi) :error-confirmation)))
+        (setf (cdr place) con-cemi
+              (car place) (if err-p :negative :positive)))
+      t)))
+
+(defun %await-pending-con (place req-cemi timeout-secs)
+  "Poll PLACE until resolved or TIMEOUT-SECS elapses.
+Returns (values con-cemi err). On timeout the entry is deregistered."
+  (let ((deadline (+ (get-internal-real-time)
+                     (* timeout-secs internal-time-units-per-second))))
+    (loop
+      (case (car place)
+        (:positive (return (values (cdr place) nil)))
+        (:negative
+         (return
+           (values nil
+                   (make-condition
+                    'knx-negative-confirmation-error
+                    :group-address (address-string-rep
+                                    (cemi-destination-addr req-cemi))
+                    :format-control "Negative L_Data.con"))))
+        (t
+         (when (>= (get-internal-real-time) deadline)
+           (%deregister-pending-con place)
+           (return
+             (values nil
+                     (make-timeout-error
+                      "Timeout waiting for L_Data.con for ga ~a"
+                      (address-string-rep
+                       (cemi-destination-addr req-cemi))))))
+         (sleep 0.05))))))
+
+;; ---------------------------------
 ;; tunnelling-request functions
 ;; ---------------------------------
 
-(defun %send-tunnel-request (req &key (retries 2))
-  "Sends given tunnel request and waits for tunnel-ack, resends request `retries' times if ack doesn't come in time.
+(defun %send-tunnel-request (req &key (retries 2) (wait :ack))
+  "Sends given tunnel request and waits for the gateway response.
+`wait' controls the blocking mode:
+- :none — fire-and-forget (no ack, no con wait).
+- :ack  — wait for the KNXnet/IP TUNNELING_ACK (legacy default).
+- :con  — additionally wait for the matching cEMI L_Data.con
+          (Calimero's WaitForCon equivalent).
+Retries on ack timeout up to `retries' times."
+  (when (eq wait :none)
+    (%%send-req req)
+    (return-from %send-tunnel-request (values t nil)))
+  (let* ((req-cemi (tunnelling-request-cemi req))
+         (con-place (when (eq wait :con)
+                      (%register-pending-con req-cemi)))
+         (recv-type (cons 'knx-tunnelling-ack
+                          (tunnelling-seq-counter req)))
+         (ack-timeout *tunnel-ack-wait-timeout-secs*))
+    (labels ((finish (resp err)
+               (when (and con-place err)
+                 (%deregister-pending-con con-place))
+               (values resp err))
+             (await-con (ack-resp)
+               (multiple-value-bind (con-cemi con-err)
+                   (%await-pending-con con-place req-cemi
+                                       *con-wait-timeout-secs*)
+                 (declare (ignore con-cemi))
+                 (if con-err
+                     (values nil con-err)
+                     (values ack-resp nil))))
+             (timeout-or-retry (count)
+               (multiple-value-bind (resp err)
+                   (%send-receive req recv-type ack-timeout)
+                 (cond
+                   ((and err (typep err 'knx-response-timeout-error))
+                    (log:warn "Received no ACK in time, resending request (try ~a)."
+                              (1+ count))
+                    (if (>= count retries)
+                        (progn
+                          (log:error
+                           "Retried sending request ~a times but no ACK for req: ~a"
+                           count req)
+                          ;; Gateway is silent on the data path while the
+                          ;; control path may still be alive (heartbeats
+                          ;; succeeding). Force a teardown so any
+                          ;; configured `*on-disconnected*` hook can
+                          ;; reconnect; otherwise the channel stays stuck.
+                          (%trigger-disconnected :tunnel-ack-failure)
+                          (finish resp err))
+                        (timeout-or-retry (1+ count))))
+                   ((not (null err))
+                    (log:error "Error waiting for ack: ~a (~a)" err (type-of err))
+                    (finish resp err))
+                   (t
+                    (log:debug "Result: ~a" resp)
+                    (if (eq wait :con)
+                        (multiple-value-bind (r e) (await-con resp)
+                          (finish r e))
+                        (finish resp err)))))))
+      (timeout-or-retry 0))))
 
-A tunnelling-request has to be ACK within 1 second and be repeated once if the ACK is not received."
-  (let ((recv-type (cons 'knx-tunnelling-ack
-                         (tunnelling-seq-counter req))))
-    (let ((ack-timeout *tunnel-ack-wait-timeout-secs*))
-      (labels ((timeout-or-retry (count)
-                 (multiple-value-bind (resp err)
-                     (%send-receive req recv-type ack-timeout)
-                   (cond
-                     ((and err (typep err 'knx-response-timeout-error))
-                      (progn
-                        (log:warn "Received no ACK in time, resending request (try ~a)."
-                                  (1+ count))
-                        (if (>= count retries)
-                            (progn
-                              (log:error
-                               "Retried sending request ~a times but no ACK for req: ~a"
-                               count req)
-                              ;; Gateway is silent on the data path while the
-                              ;; control path may still be alive (heartbeats
-                              ;; succeeding). Force a teardown so any
-                              ;; configured `*on-disconnected*` hook can
-                              ;; reconnect; otherwise the channel stays stuck.
-                              (%trigger-disconnected :tunnel-ack-failure)
-                              (values resp err))
-                            (timeout-or-retry (1+ count)))))
-                     ((not (null err))
-                      (progn
-                        (log:error "Error waiting for ack: ~a (~a)" err (type-of err))
-                        (values resp err)))
-                     (t
-                      (progn
-                        (log:debug "Result: ~a" resp)
-                        (values resp err)))))))
-        (timeout-or-retry 0)))))
-
-(defun send-write-request (group-address dpt)
+(defun send-write-request (group-address dpt &key (wait :con))
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
-Returns a `fcomputation:future` that is resolved with the tunnelling-ack when received."
+`wait' is one of `:none', `:ack', `:con' (default). With `:con' the call
+blocks until the gateway's L_Data.con confirms the bus write; on a negative
+confirm a `knx-negative-confirmation-error' is returned in the second value."
   (check-type group-address knx-group-address)
   (check-type dpt dpt)
   (%assert-channel-id)
@@ -394,11 +528,14 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
                      :dest-address group-address
                      :apci (make-apci-gv-write)
                      :dpt dpt))))
-    (%send-tunnel-request req)))
+    (%send-tunnel-request req :wait wait)))
 
-(defun send-read-request (group-address)
-  "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read to the given `address:knx-group-address`. The response to this request will be received asynchronously.
-Returns a `fcomputation:future` that is resolved with the tunnelling-ack when received."
+(defun send-read-request (group-address &key (wait :ack))
+  "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read.
+The actual GroupValueResponse arrives asynchronously via the registered
+tunnelling-request listeners; `wait' here only controls how the request
+itself is confirmed (`:ack' default, `:con' to also wait for the
+gateway's L_Data.con)."
   (check-type group-address knx-group-address)
   (%assert-channel-id)
   (let ((req (make-tunnelling-request
@@ -409,7 +546,7 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
                      :dest-address group-address
                      :apci (make-apci-gv-read)
                      :dpt nil))))
-    (%send-tunnel-request req)))
+    (%send-tunnel-request req :wait wait)))
 
 ;; ---------------------------------
 ;; async-handler
@@ -476,7 +613,8 @@ Returns a `fcomputation:future` that is resolved with the tunnelling-ack when re
               (err-p (getf (ctrl1-rep cemi) :error-confirmation)))
          (if err-p
              (log:warn "Negative L_Data.con (bus write failed) for ga ~a" ga)
-             (log:debug "L_Data.con OK for ga ~a" ga)))))
+             (log:debug "L_Data.con OK for ga ~a" ga))
+         (%resolve-pending-con cemi))))
     (progn
       (log:debug "Notifying (~a) listeners of generic L_Data request..."
                  (length *tunnel-request-listeners*))
@@ -613,7 +751,15 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
          (setf *tunnel-request-listeners*
                (remove args *tunnel-request-listeners*)))
         (:clr-tunnel-req-listeners
-         (setf *tunnel-request-listeners* nil))))))
+         (setf *tunnel-request-listeners* nil))
+        ;; pending L_Data.con management
+        (:register-pending-con
+         (let ((place (cons :pending nil)))
+           (push (cons args place) *pending-cons*)
+           (reply place)))
+        (:deregister-pending-con
+         (setf *pending-cons*
+               (delete args *pending-cons* :key #'cdr :test #'eq)))))))
 
 (defun start-async-receive ()
   (assert *async-handler* nil "No async-handler set!")
