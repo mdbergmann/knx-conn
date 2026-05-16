@@ -596,12 +596,13 @@ followed by an L_Data.con — avoids races where the .con beats register."
 
 (test send-write-request--wait-con--positive
   "With :wait :con, send-write-request must block until a matching
-L_Data.con arrives and then return positively."
+L_Data.con arrives and then return the .con cEMI."
   (with-con-fixture (ga dpt)
     (multiple-value-bind (resp err)
         (send-write-request ga dpt)
       (is (null err))
-      (is (typep resp 'knx-tunnelling-ack)))))
+      (is (typep resp 'cemi))
+      (is (eql +cemi-mc-l_data.con+ (cemi-message-code resp))))))
 
 (test send-write-request--wait-con--negative
   "A negative L_Data.con (err-confirmation bit set) must surface as
@@ -643,7 +644,8 @@ outgoing frame's must still match (eibd quirk)."
     (multiple-value-bind (resp err)
         (send-write-request ga dpt)
       (is (null err))
-      (is (typep resp 'knx-tunnelling-ack)))))
+      (is (typep resp 'cemi))
+      (is (eql +cemi-mc-l_data.con+ (cemi-message-code resp))))))
 
 (test send-tunnel-request--wait-for-ack--when-sending-new-request
   "As per KNX-IP spec, it is not allowed to send a new request before the

@@ -67,8 +67,11 @@
   ((group-address :initarg :group-address
                   :reader knx-negative-confirmation-error-group-address))
   (:report (lambda (c s)
-             (format s "KNX negative L_Data.con (bus write failed) for ga ~a"
-                     (knx-negative-confirmation-error-group-address c)))))
+             (format s "KNX negative L_Data.con for ga ~a: ~a"
+                     (knx-negative-confirmation-error-group-address c)
+                     (apply #'format nil
+                            (simple-condition-format-control c)
+                            (simple-condition-format-arguments c))))))
 
 (defun make-timeout-error (fmtstring args)
   (make-condition
@@ -151,11 +154,10 @@ It is imperative that the seq-counter starts with 0 on every new connection.")
 
 (defvar *pending-cons* nil
   "List of pending L_Data.con waits, mutated only by the async-handler
-actor (serialized with `*awaited-things*'). Each entry is a cons
-(req-cemi . result-place). `result-place' is a mutable cons whose CAR is
-`:pending', `:positive', or `:negative'; CDR holds the matched .con once
-resolved. Senders poll the place; the single-word state transition is
-safe under the existing actor-serialized write model.")
+actor (serialized with `*awaited-things*'). Each entry is a list
+`(req-cemi resolve-fn)'. `resolve-fn' is captured from a
+`sento.future' promise; calling it fulfills the future the sender is
+`fawait'ing.")
 
 (defvar *heartbeat-timer-sig* nil
   "The signature of the heartbeat timer.")
@@ -230,6 +232,7 @@ and a follow-up gateway disconnect-request won't fire the hook twice."
         (log:debug "Could not stop heartbeat during disconnect handling: ~a" c)))
     (setf *channel-id* nil)
     (setf *seq-counter* 0)
+    (setf *pending-cons* nil)
     (when *on-disconnected*
       (handler-case (funcall *on-disconnected* reason)
         (error (c)
@@ -384,7 +387,14 @@ struct types are distinct between gv-read / gv-write / gv-response."
 (defun %con-matches-p (req-cemi con-cemi)
   "Match outgoing L_Data.req against an incoming L_Data.con on
 destination-address, APCI kind, payload bytes, with Calimero's hop-count
-tolerance (equal or req-hop-count = con-hop-count + 1, e.g. eibd)."
+tolerance (equal or req-hop-count = con-hop-count + 1, e.g. eibd quirk).
+
+Limitation: this matcher does not include the seq-counter (the .con
+carries the gateway's own seq, not the request's). Two identical writes
+(same GA, same payload) in flight at once correlate by FIFO order: the
+first registered entry resolves with the first .con, regardless of
+which request actually produced it. Same limitation as Calimero's
+keepForCon."
   (and (equal (address-string-rep (cemi-destination-addr req-cemi))
               (address-string-rep (cemi-destination-addr con-cemi)))
        (%apci-same-kind-p (cemi-apci req-cemi) (cemi-apci con-cemi))
@@ -394,59 +404,65 @@ tolerance (equal or req-hop-count = con-hop-count + 1, e.g. eibd)."
              (ch (getf (ctrl2-rep con-cemi) :hop-count)))
          (or (= rh ch) (= rh (1+ ch))))))
 
+(defun %make-pending-con-future ()
+  "Returns (values future resolve-fn). Calling resolve-fn fulfills future."
+  (let (resolver)
+    (let ((fut (make-future (lambda (rfn) (setf resolver rfn)))))
+      (values fut resolver))))
+
 (defun %register-pending-con (req-cemi)
-  "Ask the async-handler to register a pending-con entry for REQ-CEMI
-and return the mutable result place. Mutating `*pending-cons*' from the
-actor only keeps it single-threaded, no lock needed."
+  "Ask the async-handler to register a pending-con entry for REQ-CEMI;
+return the future the sender will `fawait'. Mutating `*pending-cons*'
+from the actor only keeps it single-threaded — no lock needed."
   (fawait (? *async-handler* `(:register-pending-con . ,req-cemi))
           :timeout 2 :sleep-time .01))
 
-(defun %deregister-pending-con (place)
-  "Fire-and-forget removal of a pending-con entry by its place identity."
+(defun %deregister-pending-con (resolver)
+  "Fire-and-forget removal of a pending-con entry by its resolver identity."
   (when *async-handler*
-    (! *async-handler* `(:deregister-pending-con . ,place))))
+    (! *async-handler* `(:deregister-pending-con . ,resolver))))
 
 (defun %resolve-pending-con (con-cemi)
-  "Walk pending entries oldest-first; on match, fill the place and
-remove. Returns T on match. Must be called from the actor thread."
+  "Walk pending entries oldest-first; on match, remove the entry and
+fulfill its future. Returns T on match. Must be called from the actor
+thread."
   (let ((target (find-if (lambda (entry)
-                           (%con-matches-p (car entry) con-cemi))
+                           (%con-matches-p (first entry) con-cemi))
                          *pending-cons*
                          :from-end t)))
     (when target
       (setf *pending-cons* (delete target *pending-cons* :test #'eq))
-      (let* ((place (cdr target))
-             (err-p (getf (ctrl1-rep con-cemi) :error-confirmation)))
-        (setf (cdr place) con-cemi
-              (car place) (if err-p :negative :positive)))
+      (let ((resolver (third target))
+            (err-p (getf (ctrl1-rep con-cemi) :error-confirmation)))
+        (funcall resolver (if err-p
+                              (cons :negative con-cemi)
+                              (cons :positive con-cemi))))
       t)))
 
-(defun %await-pending-con (place req-cemi timeout-secs)
-  "Poll PLACE until resolved or TIMEOUT-SECS elapses.
-Returns (values con-cemi err). On timeout the entry is deregistered."
-  (let ((deadline (+ (get-internal-real-time)
-                     (* timeout-secs internal-time-units-per-second))))
-    (loop
-      (case (car place)
-        (:positive (return (values (cdr place) nil)))
-        (:negative
-         (return
-           (values nil
-                   (make-condition
-                    'knx-negative-confirmation-error
-                    :group-address (address-string-rep
-                                    (cemi-destination-addr req-cemi))
-                    :format-control "Negative L_Data.con"))))
-        (t
-         (when (>= (get-internal-real-time) deadline)
-           (%deregister-pending-con place)
-           (return
-             (values nil
-                     (make-timeout-error
-                      "Timeout waiting for L_Data.con for ga ~a"
-                      (address-string-rep
-                       (cemi-destination-addr req-cemi))))))
-         (sleep 0.05))))))
+(defun %await-pending-con (fut req-cemi timeout-secs)
+  "Wait for FUT (the future from `%register-pending-con') for up to
+TIMEOUT-SECS. Returns (values con-cemi err); on timeout, deregisters."
+  (let ((result (fawait fut :timeout timeout-secs :sleep-time 0.05)))
+    (cond
+      ((and (consp result) (eq (car result) :positive))
+       (values (cdr result) nil))
+      ((and (consp result) (eq (car result) :negative))
+       (values nil
+               (make-condition
+                'knx-negative-confirmation-error
+                :group-address (address-string-rep
+                                (cemi-destination-addr req-cemi))
+                :format-control "bus write failed (err-confirmation bit set)"
+                :format-arguments nil)))
+      (t
+       ;; not-ready / nil — timeout. The entry is still registered; tell
+       ;; the actor to drop it so a late .con doesn't resolve a dead future.
+       (%deregister-pending-con fut)
+       (values nil
+               (make-timeout-error
+                "Timeout waiting for L_Data.con for ga ~a"
+                (address-string-rep
+                 (cemi-destination-addr req-cemi))))))))
 
 ;; ---------------------------------
 ;; tunnelling-request functions
@@ -464,23 +480,18 @@ Retries on ack timeout up to `retries' times."
     (%%send-req req)
     (return-from %send-tunnel-request (values t nil)))
   (let* ((req-cemi (tunnelling-request-cemi req))
-         (con-place (when (eq wait :con)
-                      (%register-pending-con req-cemi)))
+         (con-fut (when (eq wait :con)
+                    (%register-pending-con req-cemi)))
          (recv-type (cons 'knx-tunnelling-ack
                           (tunnelling-seq-counter req)))
          (ack-timeout *tunnel-ack-wait-timeout-secs*))
     (labels ((finish (resp err)
-               (when (and con-place err)
-                 (%deregister-pending-con con-place))
+               (when (and con-fut err)
+                 (%deregister-pending-con con-fut))
                (values resp err))
-             (await-con (ack-resp)
-               (multiple-value-bind (con-cemi con-err)
-                   (%await-pending-con con-place req-cemi
-                                       *con-wait-timeout-secs*)
-                 (declare (ignore con-cemi))
-                 (if con-err
-                     (values nil con-err)
-                     (values ack-resp nil))))
+             (await-con ()
+               (%await-pending-con con-fut req-cemi
+                                   *con-wait-timeout-secs*))
              (timeout-or-retry (count)
                (multiple-value-bind (resp err)
                    (%send-receive req recv-type ack-timeout)
@@ -507,16 +518,19 @@ Retries on ack timeout up to `retries' times."
                    (t
                     (log:debug "Result: ~a" resp)
                     (if (eq wait :con)
-                        (multiple-value-bind (r e) (await-con resp)
-                          (finish r e))
+                        (multiple-value-bind (con-cemi con-err) (await-con)
+                          (finish con-cemi con-err))
                         (finish resp err)))))))
       (timeout-or-retry 0))))
 
 (defun send-write-request (group-address dpt &key (wait :con))
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
-`wait' is one of `:none', `:ack', `:con' (default). With `:con' the call
-blocks until the gateway's L_Data.con confirms the bus write; on a negative
-confirm a `knx-negative-confirmation-error' is returned in the second value."
+`wait' is one of `:none', `:ack', `:con' (default). The first return value is:
+- `:none' — `T'.
+- `:ack'  — the `knx-tunnelling-ack' from the gateway.
+- `:con'  — the matched cEMI `L_Data.con' frame (inspect `ctrl1' for the
+            confirm bit, etc.). On negative confirm, returns
+            `(values nil knx-negative-confirmation-error)' instead."
   (check-type group-address knx-group-address)
   (check-type dpt dpt)
   (%assert-channel-id)
@@ -754,12 +768,13 @@ Waiting on responses for specific tunnelling requests on an L_Data level must be
          (setf *tunnel-request-listeners* nil))
         ;; pending L_Data.con management
         (:register-pending-con
-         (let ((place (cons :pending nil)))
-           (push (cons args place) *pending-cons*)
-           (reply place)))
+         (multiple-value-bind (fut resolver) (%make-pending-con-future)
+           (push (list args fut resolver) *pending-cons*)
+           (reply fut)))
         (:deregister-pending-con
+         ;; `args' is the future returned at registration; key on it.
          (setf *pending-cons*
-               (delete args *pending-cons* :key #'cdr :test #'eq)))))))
+               (delete args *pending-cons* :key #'second :test #'eq)))))))
 
 (defun start-async-receive ()
   (assert *async-handler* nil "No async-handler set!")
