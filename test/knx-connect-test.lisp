@@ -185,7 +185,8 @@
     (with-knx/ip ("12.23.34.45" :port 1234)
       (is (eq t (write-value "1/2/3"
                              'dpt:dpt-1.001
-                             t))))
+                             t
+                             :wait :ack))))
     (is (= (length (invocations
                     'ip-client:ip-connect)) 1))
     (is (>= (length (invocations
@@ -212,7 +213,8 @@
         (mapcar (lambda (dpt-vals)
                   (let ((dpt-type (car dpt-vals))
                         (val (cdr dpt-vals)))
-                    (is-true (write-value "1/2/3" dpt-type val))))
+                    (is-true (write-value "1/2/3" dpt-type val
+                                          :wait :ack))))
                 dpts)))))
 
 (test with-knx/ip--write-value--err-no-ack

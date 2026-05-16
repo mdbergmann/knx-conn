@@ -415,7 +415,8 @@ In case of this the log must be checked."
       `(,(make-tunnelling-ack-2 78 0) nil))
     (multiple-value-bind (ack _err)
         (send-write-request (make-group-address "0/4/10")
-                            (make-dpt1 :switch :on))
+                            (make-dpt1 :switch :on)
+                            :wait :ack)
       (declare (ignore _err))
       (is (typep ack 'knx-tunnelling-ack))
       (is (= 78 (tunnelling-channel-id ack)))
@@ -437,9 +438,11 @@ In case of this the log must be checked."
             (call-previous)))
       (answer act:? (with-fut (list t nil)))
       (send-write-request (make-group-address "0/4/10")
-                          (make-dpt1 :switch :on))
+                          (make-dpt1 :switch :on)
+                          :wait :ack)
       (send-write-request (make-group-address "0/4/10")
-                          (make-dpt1 :switch :on))
+                          (make-dpt1 :switch :on)
+                          :wait :ack)
       (is (= (length seq-counters) 2))
       (is (= (second seq-counters) 0))
       (is (= (first seq-counters) 1)))))
@@ -458,9 +461,11 @@ In case of this the log must be checked."
             (call-previous)))
       (answer act:? (with-fut (list t nil)))
       (send-write-request (make-group-address "0/4/10")
-                          (make-dpt1 :switch :on))
+                          (make-dpt1 :switch :on)
+                          :wait :ack)
       (send-write-request (make-group-address "0/4/10")
-                          (make-dpt1 :switch :on))
+                          (make-dpt1 :switch :on)
+                          :wait :ack)
       (is (= (length seq-counters) 2))
       (is (= (second seq-counters) 254))
       (is (= (first seq-counters) 0)))))
@@ -475,7 +480,8 @@ In case of this the log must be checked."
     (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1.0))
       (multiple-value-bind (ack err)
           (send-write-request (make-group-address "0/4/10")
-                              (make-dpt1 :switch :on))
+                              (make-dpt1 :switch :on)
+                              :wait :ack)
         (is (null ack))
         (is (typep err 'knx-response-timeout-error))
         (is (= 3 (length (invocations 'ip-client:ip-send-knx-data))))))))
@@ -529,6 +535,117 @@ In case of this the log must be checked."
           (is (typep ack 'knx-tunnelling-ack))
           (is (null err))))
       (is (>= (length (invocations 'ip-client:ip-send-knx-data)) 2)))))
+
+;; --------------------------------------
+;; WaitForCon — L_Data.con correlation
+;; --------------------------------------
+
+(defun %make-con-tunnelling-request (seq ga dpt &key (err-confirm nil)
+                                                     (hop-decrement 0))
+  "Build a tunnelling-request wrapping an L_Data.con cEMI for GA/DPT.
+With ERR-CONFIRM the ctrl1 confirmation flag is set (negative .con).
+HOP-DECREMENT subtracts from the default ctrl2 hop-count to simulate
+eibd-style couplers."
+  (let ((cemi (make-default-cemi
+               :message-code +cemi-mc-l_data.con+
+               :dest-address ga
+               :apci (make-apci-gv-write)
+               :dpt dpt)))
+    (when err-confirm
+      (setf (aref (cemi-ctrl1 cemi) 7) 1))
+    (when (plusp hop-decrement)
+      (let* ((ctrl2 (cemi-ctrl2 cemi))
+             (cur (ash (logand (bit-vector-to-number ctrl2) #x70) -4))
+             (new (max 0 (- cur hop-decrement))))
+        (setf (cemi-ctrl2 cemi)
+              (number-to-bit-vector
+               (logior (logand (bit-vector-to-number ctrl2) #x8f)
+                       (ash (logand new #x07) 4))
+               8))))
+    ;; round-trip through bytes so the .con looks like a parsed inbound
+    (parse-root-knx-object
+     (to-byte-seq (make-tunnelling-request
+                   :channel-id 78
+                   :seq-counter seq
+                   :cemi cemi)))))
+
+(defmacro with-con-fixture ((ga-var dpt-var &key err-confirm hop-decrement)
+                            &body body)
+  "Set up a tunnel where the ack arrives only after the request is sent,
+followed by an L_Data.con — avoids races where the .con beats register."
+  `(with-fixture env (nil t)
+     (setf *receive-knx-data-recur-delay-secs* .05)
+     (setf knx-client::*channel-id* 78)
+     (let ((,ga-var (make-group-address "0/4/10"))
+           (,dpt-var (make-dpt1 :switch :on))
+           (responses))
+       (answer (ip-client:ip-send-knx-data sent)
+         (when (typep sent 'knx-tunnelling-request)
+           (setf responses
+                 (append responses
+                         (list (make-tunnelling-ack sent)
+                               (%make-con-tunnelling-request
+                                99 ,ga-var ,dpt-var
+                                :err-confirm ,err-confirm
+                                :hop-decrement
+                                ,(or hop-decrement 0)))))))
+       (answer ip-client:ip-receive-knx-data
+         (when responses
+           `(,(pop responses) nil)))
+       ,@body)))
+
+(test send-write-request--wait-con--positive
+  "With :wait :con, send-write-request must block until a matching
+L_Data.con arrives and then return the .con cEMI."
+  (with-con-fixture (ga dpt)
+    (multiple-value-bind (resp err)
+        (send-write-request ga dpt)
+      (is (null err))
+      (is (typep resp 'cemi))
+      (is (eql +cemi-mc-l_data.con+ (cemi-message-code resp))))))
+
+(test send-write-request--wait-con--negative
+  "A negative L_Data.con (err-confirmation bit set) must surface as
+knx-negative-confirmation-error."
+  (with-con-fixture (ga dpt :err-confirm t)
+    (multiple-value-bind (resp err)
+        (send-write-request ga dpt)
+      (is (null resp))
+      (is (typep err 'knx-negative-confirmation-error))
+      (is (equal "0/4/10"
+                 (knx-negative-confirmation-error-group-address err))))))
+
+(test send-write-request--wait-con--timeout
+  "Ack arrives but no L_Data.con — call must time out with a
+knx-response-timeout-error after *con-wait-timeout-secs*."
+  (with-fixture env (nil t)
+    (setf *receive-knx-data-recur-delay-secs* .05)
+    (setf knx-client::*channel-id* 78)
+    (let ((ga (make-group-address "0/4/10"))
+          (dpt (make-dpt1 :switch :on))
+          (responses))
+      (answer (ip-client:ip-send-knx-data sent)
+        (when (typep sent 'knx-tunnelling-request)
+          (setf responses
+                (append responses (list (make-tunnelling-ack sent))))))
+      (answer ip-client:ip-receive-knx-data
+        (when responses
+          `(,(pop responses) nil)))
+      (let ((knx-client::*con-wait-timeout-secs* 0.5))
+        (multiple-value-bind (resp err)
+            (send-write-request ga dpt)
+          (is (null resp))
+          (is (typep err 'knx-response-timeout-error)))))))
+
+(test send-write-request--wait-con--matches-with-hop-count-decrement
+  "Calimero-style tolerance: a .con whose hop-count is one less than the
+outgoing frame's must still match (eibd quirk)."
+  (with-con-fixture (ga dpt :hop-decrement 1)
+    (multiple-value-bind (resp err)
+        (send-write-request ga dpt)
+      (is (null err))
+      (is (typep resp 'cemi))
+      (is (eql +cemi-mc-l_data.con+ (cemi-message-code resp))))))
 
 (test send-tunnel-request--wait-for-ack--when-sending-new-request
   "As per KNX-IP spec, it is not allowed to send a new request before the
@@ -605,7 +722,8 @@ hook can take over."
         (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1.0))
           (multiple-value-bind (ack err)
               (send-write-request (make-group-address "0/4/10")
-                                  (make-dpt1 :switch :on))
+                                  (make-dpt1 :switch :on)
+                                  :wait :ack)
             (is (null ack))
             (is (typep err 'knx-response-timeout-error))))
         (is (equal reasons '(:tunnel-ack-failure)))

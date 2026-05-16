@@ -420,10 +420,15 @@ Encoding:   Day = [0 .. 7]
          (minute (aref byte-vec 1))
          (second (aref byte-vec 2))
          (ts (local-time:now)))
+    ;; KNX day 1..7 (Mon..Sun) maps to local-time day-of-week 1..6,0.
+    ;; `offset :day-of-week' uses ambiguous semantics across local-time
+    ;; versions, so shift by an explicit day delta instead.
     (when (> day 0)
-      (local-time:adjust-timestamp! ts
-        (offset :day-of-week (aref local-time::+day-names-as-keywords+
-                                   (if (= day 7) 0 day)))))
+      (let* ((target-dow (if (= day 7) 0 day))
+             (current-dow (local-time:timestamp-day-of-week ts))
+             (delta (- target-dow current-dow)))
+        (unless (zerop delta)
+          (local-time:adjust-timestamp! ts (offset :day delta)))))
     (local-time:adjust-timestamp! ts
       (set :hour hour)
       (set :minute minute)
