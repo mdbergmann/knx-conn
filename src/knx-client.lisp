@@ -369,21 +369,6 @@ If the connection is established successfully, the channel-id will be stored in 
 ;; pending L_Data.con correlation
 ;; ---------------------------------
 
-(defun %cemi-payload-bytes (cemi)
-  "Return a comparable byte sequence for the cEMI's data slot.
-Outgoing frames carry a `dpt' object (use its `to-byte-seq' method),
-incoming `.con's carry a byte array (already in that form)."
-  (let ((d (cemi-data cemi)))
-    (cond
-      ((null d) #())
-      ((arrayp d) d)
-      (t (knxobj:to-byte-seq d)))))
-
-(defun %apci-same-kind-p (a b)
-  "True if A and B are the same APCI kind (read/write/response). The
-struct types are distinct between gv-read / gv-write / gv-response."
-  (eq (type-of a) (type-of b)))
-
 (defun %con-matches-p (req-cemi con-cemi)
   "Match outgoing L_Data.req against an incoming L_Data.con on
 destination-address, APCI kind, payload bytes, with Calimero's hop-count
@@ -395,14 +380,19 @@ carries the gateway's own seq, not the request's). Two identical writes
 first registered entry resolves with the first .con, regardless of
 which request actually produced it. Same limitation as Calimero's
 keepForCon."
-  (and (equal (address-string-rep (cemi-destination-addr req-cemi))
-              (address-string-rep (cemi-destination-addr con-cemi)))
-       (%apci-same-kind-p (cemi-apci req-cemi) (cemi-apci con-cemi))
-       (equalp (%cemi-payload-bytes req-cemi)
-               (%cemi-payload-bytes con-cemi))
-       (let ((rh (getf (ctrl2-rep req-cemi) :hop-count))
-             (ch (getf (ctrl2-rep con-cemi) :hop-count)))
-         (or (= rh ch) (= rh (1+ ch))))))
+  (flet ((payload-bytes (cemi)
+           (let ((d (cemi-data cemi)))
+             (cond ((null d) #())
+                   ((arrayp d) d)
+                   (t (knxobj:to-byte-seq d))))))
+    (and (equal (address-string-rep (cemi-destination-addr req-cemi))
+                (address-string-rep (cemi-destination-addr con-cemi)))
+         (eq (type-of (cemi-apci req-cemi))
+             (type-of (cemi-apci con-cemi)))
+         (equalp (payload-bytes req-cemi) (payload-bytes con-cemi))
+         (let ((rh (getf (ctrl2-rep req-cemi) :hop-count))
+               (ch (getf (ctrl2-rep con-cemi) :hop-count)))
+           (or (= rh ch) (= rh (1+ ch)))))))
 
 (defun %make-pending-con-future ()
   "Returns (values future resolve-fn). Calling resolve-fn fulfills future."
