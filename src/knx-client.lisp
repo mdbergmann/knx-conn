@@ -195,7 +195,7 @@ thread. Errors signalled from the hook are caught and logged.")
 (defun %next-seq-counter ()
   (prog1
       *seq-counter*
-    (setf *seq-counter* (mod (1+ *seq-counter*) 255))))
+    (setf *seq-counter* (mod (1+ *seq-counter*) 256))))
 
 (defun %start-heartbeat ()
   (assert *async-handler* nil "No async-handler set!")

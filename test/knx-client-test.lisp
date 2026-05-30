@@ -450,7 +450,7 @@ In case of this the log must be checked."
 (test send-write-request--seq-counter--rollover
   (with-fixture env (nil nil)
     (setf knx-client::*channel-id* 78)
-    (setf knx-client::*seq-counter* 254)
+    (setf knx-client::*seq-counter* 255)
     (let ((seq-counters nil))
       ;; attention: we're mocking `act:!` here.
       ;; but it is also used in the fixture cleanup-code, so we have to have
@@ -467,7 +467,7 @@ In case of this the log must be checked."
                           (make-dpt1 :switch :on)
                           :wait :ack)
       (is (= (length seq-counters) 2))
-      (is (= (second seq-counters) 254))
+      (is (= (second seq-counters) 255))
       (is (= (first seq-counters) 0)))))
 
 (test send-write-request--ack-timeout--should-repeat-send-with-retry
