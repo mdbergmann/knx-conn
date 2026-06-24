@@ -92,20 +92,42 @@ This can be `NIL` only for short time window. Usually the KNXnet/IP gateway want
 ;; convenience functions and macro DSL
 ;; ---------------------------------
 
-(defun write-value (group-address dpt-type value &key (wait :con))
+(defun write-value (group-address dpt-type value
+                    &key (wait :con) (retries 0) (retry-backoff 0.5))
   "Write the given `value` to the `group-address` with the given `dpt-type`.
-Returns `T' if all went well and error condition on error.
+Returns `T' if all went well and the (last) error condition on error.
 
 `wait' selects how the call blocks (forwarded to `send-write-request'):
-`:none', `:ack', or `:con' (default — Calimero `WaitForCon' equivalent)."
+`:none', `:ack', or `:con' (default — Calimero `WaitForCon' equivalent).
+
+`retries' is the number of *additional* attempts made when the write does not
+succeed — i.e. when `send-write-request' reports a failure such as a negative
+`L_Data.con' or an ACK/response timeout. The default `0' preserves the original
+fire-once behaviour. `retry-backoff' is the delay in seconds slept between
+attempts (only applied between retries, not after the final attempt).
+
+Note: this retries the *transport* delivery of the telegram onto the bus. It
+does not verify that the receiving device reached the intended state — that is a
+read-back concern for the higher-level binding."
   (assert (dpt:dpt-value-type-p dpt-type) nil "Unsupported dpt type!")
   (log:info "Writing value: ~a (~a) to ga: ~a" value dpt-type group-address)
-  (multiple-value-bind (resp err)
-      (send-write-request
-       (address:make-group-address group-address)
-       (dpt:make-dpt dpt-type value)
-       :wait wait)
-    (if resp t err)))
+  (let ((ga (address:make-group-address group-address))
+        (dpt (dpt:make-dpt dpt-type value)))
+    (loop :for attempt :from 0 :to retries
+          :do (multiple-value-bind (resp err)
+                  (send-write-request ga dpt :wait wait)
+                (cond
+                  (resp (return t))
+                  ((>= attempt retries)
+                   (when (> retries 0)
+                     (log:warn "write-value to ~a failed after ~a attempt(s): ~a"
+                               group-address (1+ attempt) err))
+                   (return err))
+                  (t
+                   (log:info "write-value to ~a failed (~a), retrying (~a/~a)..."
+                             group-address err (1+ attempt) retries)
+                   (when (and retry-backoff (plusp retry-backoff))
+                     (sleep retry-backoff))))))))
 
 (defmacro %make-listener-fun (requested-ga dpt-type)
   `(lambda (req)

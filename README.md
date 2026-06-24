@@ -110,6 +110,8 @@ It is also possible to send write requests to GAs in order to change state/value
 The last argument `T` here means 'switch on' the light. `NIL` would switch it off.  
 Again `write-value` returns `future`.
 
+Pass `:retries N` (with optional `:retry-backoff` seconds) to resend the telegram when a write fails with a negative `L_Data.con` or an ACK/response timeout, instead of giving up after one attempt. The default `0` keeps the single-attempt behaviour. Note this only retries delivery onto the bus; it does not verify the receiving device reached the intended state.
+
 ```
 KNX-CONNECT> (fawait (write-value "0/0/4" 'dpt:dpt-1.001 t)
                      :timeout 1.0)

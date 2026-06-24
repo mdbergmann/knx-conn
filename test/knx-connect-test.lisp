@@ -294,6 +294,57 @@
                (= (length (invocations
                            'ip-client:ip-disconnect)) 1)))))
 
+;; write-value retry behaviour
+;; ---------------------------
+
+(test write-value--default-no-retry-single-attempt
+  "With the default `:retries 0' write-value makes exactly one send attempt and
+returns the error on failure (preserving the original behaviour)."
+  (with-mocks ()
+    (let ((calls 0))
+      (answer knx-client:send-write-request
+        (progn
+          (incf calls)
+          (values nil (make-condition 'knx-client:knx-response-timeout-error
+                                      :format-control "no ack"))))
+      (let ((result (write-value "1/2/3" 'dpt:dpt-1.001 t)))
+        (is (typep result 'knx-client:knx-response-timeout-error))
+        (is (= 1 calls))))))
+
+(test write-value--retries-on-failure-then-succeeds
+  "write-value resends the telegram when send-write-request reports a failure
+(e.g. negative L_Data.con / timeout), up to `:retries' times, and returns T as
+soon as a send succeeds."
+  (with-mocks ()
+    (let ((calls 0))
+      (answer knx-client:send-write-request
+        (progn
+          (incf calls)
+          (if (< calls 3)
+              (values nil (make-condition 'knx-client:knx-response-timeout-error
+                                          :format-control "no ack"))
+              (values t nil))))
+      (is (eq t (write-value "1/2/3" 'dpt:dpt-1.001 t
+                             :retries 3 :retry-backoff 0)))
+      ;; 2 failed + 1 successful
+      (is (= 3 calls)))))
+
+(test write-value--gives-up-after-retries-returns-last-error
+  "When every attempt fails write-value makes `:retries'+1 attempts and returns
+the last error condition rather than discarding it."
+  (with-mocks ()
+    (let ((calls 0))
+      (answer knx-client:send-write-request
+        (progn
+          (incf calls)
+          (values nil (make-condition 'knx-client:knx-response-timeout-error
+                                      :format-control "no ack"))))
+      (let ((result (write-value "1/2/3" 'dpt:dpt-1.001 t
+                                 :retries 2 :retry-backoff 0)))
+        (is (typep result 'knx-client:knx-response-timeout-error))
+        ;; 1 initial + 2 retries
+        (is (= 3 calls))))))
+
 ;; request-value
 ;; -------------
 
