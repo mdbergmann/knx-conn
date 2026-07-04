@@ -130,23 +130,29 @@ The byte-sequence should be a flat vector of octets."))
   "Root object parse function.
 `PKG-DATA`: package data, array of bytes representing the package.
 Returns the parsed object."
+  (when (< (length pkg-data) +knx-header-len+)
+    (error 'knx-unable-to-parse
+           :format-control "Data too short for KNXnet/IP header (~a bytes), data: ~a"
+           :format-arguments (list (length pkg-data) pkg-data)))
   (let* ((header (%parse-header pkg-data))
          (header-len (header-len header))
-         (body (subseq pkg-data
-                       header-len
-                       (+ (header-body-len header)
-                          header-len)))
+         (body-end (+ (header-body-len header) header-len))
          (type (header-type header)))
-    (handler-case
-        (parse-to-obj type header body)
-      (knx-error-condition (e)
-        (log:warn "Error on parsing: ~a" e)
-        (error e))
-      (error (e)
-        (log:warn "Unable to parse the package: ~a" e)
-        (error 'knx-unable-to-parse
-               :format-control "Unable to parse data. Message type: "
-               :format-arguments (list type))))))
+    (when (> body-end (length pkg-data))
+      (error 'knx-unable-to-parse
+             :format-control "Declared package length ~a exceeds received ~a bytes. Message type: ~a, data: ~a"
+             :format-arguments (list body-end (length pkg-data) type pkg-data)))
+    (let ((body (subseq pkg-data header-len body-end)))
+      (handler-case
+          (parse-to-obj type header body)
+        (knx-error-condition (e)
+          (log:warn "Error on parsing: ~a" e)
+          (error e))
+        (error (e)
+          (log:warn "Unable to parse the package: ~a, data: ~a" e pkg-data)
+          (error 'knx-unable-to-parse
+                 :format-control "Unable to parse data. Message type: ~a, cause: ~a, data: ~a"
+                 :format-arguments (list type e pkg-data)))))))
 
 (defmethod to-byte-seq ((obj knx-package))
   (to-byte-seq (package-header obj)))

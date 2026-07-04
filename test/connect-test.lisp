@@ -54,6 +54,35 @@
          (res (parse-root-knx-object res-bytes)))
     (is (typep res 'knx-disconnect-response))))
 
+(test parse-connect-response--error-status--no-hpai-crd
+  "An error connect-response is 8 bytes total: channel-id + status only (per
+spec no data-endpoint HPAI and no CRD are included)."
+  (let ((resp (parse-root-knx-object
+               #(6 16 2 6 0 8 0 #x24))))
+    (is (typep resp 'knx-connect-response))
+    (is (= (connect-response-channel-id resp) 0))
+    (is (= (connect-response-status resp)
+           +connect-status-err-no-more-conns+))
+    (is (null (connect::connect-response-hpai resp)))
+    (is (null (connect-response-crd resp)))))
+
+(test connect-status-name--decodes-spec-names
+  (is (string= "NO_ERROR" (connect-status-name #x00)))
+  (is (string= "E_CONNECTION_TYPE" (connect-status-name #x22)))
+  (is (string= "E_NO_MORE_CONNECTIONS" (connect-status-name #x24)))
+  (is (string= "UNKNOWN(#x42)" (connect-status-name #x42))))
+
+(test parse-root-knx-object--too-short-for-header
+  "Fewer bytes than a KNXnet/IP header must signal a clean parse condition."
+  (signals knx-unable-to-parse
+    (parse-root-knx-object #(2 6))))
+
+(test parse-root-knx-object--declared-len-exceeds-buffer
+  "A header declaring more payload than was actually received must signal a
+clean parse condition instead of a subseq bounding error."
+  (signals knx-unable-to-parse
+    (parse-root-knx-object #(6 16 2 6 0 20 0 36))))
+
 (test make-connstate-request--ok
   (let ((hpai (make-hpai #(127 0 0 1) 123))
         (req (make-connstate-request 0 (cons "127.0.0.1" 123))))

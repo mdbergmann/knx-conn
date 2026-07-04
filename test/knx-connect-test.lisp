@@ -316,7 +316,9 @@ returns the error on failure (preserving the original behaviour)."
 (e.g. negative L_Data.con / timeout), up to `:retries' times, and returns T as
 soon as a send succeeds."
   (with-mocks ()
-    (let ((calls 0))
+    (let ((calls 0)
+          ;; retries only continue while the tunnel is considered established
+          (knx-client::*channel-id* 1))
       (answer knx-client:send-write-request
         (progn
           (incf calls)
@@ -333,7 +335,9 @@ soon as a send succeeds."
   "When every attempt fails write-value makes `:retries'+1 attempts and returns
 the last error condition rather than discarding it."
   (with-mocks ()
-    (let ((calls 0))
+    (let ((calls 0)
+          ;; retries only continue while the tunnel is considered established
+          (knx-client::*channel-id* 1))
       (answer knx-client:send-write-request
         (progn
           (incf calls)
@@ -344,6 +348,41 @@ the last error condition rather than discarding it."
         (is (typep result 'knx-client:knx-response-timeout-error))
         ;; 1 initial + 2 retries
         (is (= 3 calls))))))
+
+(test write-value--no-connection--returns-error-no-retries
+  "A thrown `knx-no-connection-error' is returned (not signalled) and remaining
+retries are skipped: recovery is the reconnect handling above this layer."
+  (with-mocks ()
+    (let ((calls 0)
+          (knx-client::*channel-id* nil))
+      (answer knx-client:send-write-request
+        (progn
+          (incf calls)
+          (error 'knx-client:knx-no-connection-error)))
+      (let ((result (write-value "1/2/3" 'dpt:dpt-1.001 t
+                                 :retries 3 :retry-backoff 0)))
+        (is (typep result 'knx-client:knx-no-connection-error))
+        (is (= 1 calls))))))
+
+(test write-value--connection-lost-during-retries--aborts
+  "When the tunnel goes down between attempts, write-value stops retrying and
+returns the last error instead of burning the remaining retry budget."
+  (with-mocks ()
+    (let ((calls 0)
+          (knx-client::*channel-id* 1))
+      (answer knx-client:send-write-request
+        (progn
+          (incf calls)
+          (when (= calls 2)
+            ;; connection torn down after the second attempt
+            (setf knx-client::*channel-id* nil))
+          (values nil (make-condition 'knx-client:knx-response-timeout-error
+                                      :format-control "no ack"))))
+      (let ((result (write-value "1/2/3" 'dpt:dpt-1.001 t
+                                 :retries 5 :retry-backoff 0)))
+        (is (typep result 'knx-client:knx-response-timeout-error))
+        ;; 1 initial + 1 retry, then aborted due to connection loss
+        (is (= 2 calls))))))
 
 ;; request-value
 ;; -------------

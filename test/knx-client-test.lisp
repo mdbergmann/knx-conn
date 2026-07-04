@@ -218,6 +218,32 @@ In case of this the log must be checked."
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
     (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))))
 
+(defparameter *test-connect-response--err-short*
+  (parse-root-knx-object
+   #(6 16 2 6 0 8 0 36))
+  "Spec-conformant 8-byte error connect response (E_NO_MORE_CONNECTIONS),
+carrying only channel-id + status, no HPAI/CRD.")
+
+(test connect--err--short-error-response--parsed-and-no-channel-id
+  "The 8-byte error connect-response must surface its status (instead of
+failing to parse) and must not establish the tunnel."
+  (with-fixture env (nil t)
+    (answer ip-client:ip-send-knx-data t)
+    (answer ip-client:ip-receive-knx-data
+      `(,*test-connect-response--err-short* nil))
+
+    (setf knx-client::*channel-id* nil)
+    (multiple-value-bind (resp err)
+        (establish-tunnel-connection nil)
+      (is (null err))
+      (is (= (connect-response-status resp)
+             connect::+connect-status-err-no-more-conns+))
+      (is (null (connect-response-crd resp))))
+    (is (null knx-client::*channel-id*))
+
+    (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
+    (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))))
+
 (test connect--starts-heartbeat--ok
   (with-fixture env (nil t)
     (answer ip-client:ip-send-knx-data t)

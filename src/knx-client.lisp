@@ -40,6 +40,7 @@
            #:knx-response-timeout-error
            #:knx-negative-confirmation-error
            #:knx-negative-confirmation-error-group-address
+           #:knx-no-connection-error
            ;; con-wait
            #:*con-wait-timeout-secs*
            ))
@@ -77,6 +78,12 @@
   (make-condition
    'knx-response-timeout-error
    :format-control (format nil fmtstring args)))
+
+(define-condition knx-no-connection-error (simple-error)
+  ()
+  (:default-initargs :format-control "No open connection!")
+  (:report (lambda (c s)
+             (format s "~a" (simple-condition-format-control c)))))
 
 ;; ---------------------------------
 ;; configuration
@@ -189,8 +196,8 @@ thread. Errors signalled from the hook are caught and logged.")
   t)
 
 (defun %assert-channel-id ()
-  (assert (integerp *channel-id*)
-          nil "No open connection!"))
+  (unless (integerp *channel-id*)
+    (error 'knx-no-connection-error)))
 
 (defun %next-seq-counter ()
   (prog1
@@ -332,7 +339,8 @@ If the connection is established successfully, the channel-id will be stored in 
     (when response
       (let ((status (connect-response-status response)))
         (if (not (eql status 0))
-            (log:warn "Tunnel connection failed, status: ~a" status)
+            (log:warn "Tunnel connection failed, status: ~a (~a)"
+                      status (connect-status-name status))
             (progn
               (log:info "Tunnel connection established.")
               (log:info "Channel-id: ~a" (connect-response-channel-id response))

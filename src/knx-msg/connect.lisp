@@ -8,8 +8,10 @@
            #:connect-response-channel-id
            #:connect-response-status
            #:connect-response-crd
+           #:connect-status-name
            #:+connect-status-no-error+
            #:+connect-status-err-conn-type+
+           #:+connect-status-err-no-more-conns+
            ;; disconnect
            #:make-disconnect-request
            #:knx-disconnect-request
@@ -35,6 +37,16 @@
 (defconstant +connect-status-err-conn-type+ #x22)
 (defconstant +connect-status-err-conn-option+ #x23)
 (defconstant +connect-status-err-no-more-conns+ #x24)
+
+(defun connect-status-name (status)
+  "Returns the KNXnet/IP spec name for a connect-response STATUS code."
+  (case status
+    (#.+connect-status-no-error+ "NO_ERROR")
+    (#.+connect-status-err-conn-id+ "E_CONNECTION_ID")
+    (#.+connect-status-err-conn-type+ "E_CONNECTION_TYPE")
+    (#.+connect-status-err-conn-option+ "E_CONNECTION_OPTION")
+    (#.+connect-status-err-no-more-conns+ "E_NO_MORE_CONNECTIONS")
+    (t (format nil "UNKNOWN(#x~2,'0x)" status))))
 
 ;; -----------------------------
 ;; knx connect request
@@ -118,18 +130,26 @@ KNXnet/IP body
 +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+"
   (channel-id (error "channel-id required!") :type octet)
   (status (error "status required!") :type octet)
-  (hpai (error "hpai required!") :type hpai)
-  (crd (error "crd required!") :type crd))
+  ;; hpai and crd are NIL on an error response (status /= 0), which per
+  ;; spec carries only channel-id + status.
+  (hpai nil :type (or null hpai))
+  (crd nil :type (or null crd)))
 
 (defmethod parse-to-obj ((obj-type (eql +knx-connect-response+)) header body)
   (let ((channel-id (aref body 0))
         (status (aref body 1)))
-    (%make-connect-response
-     :header header
-     :channel-id channel-id
-     :status status
-     :hpai (parse-hpai (subseq body 2 10))
-     :crd (parse-crd (subseq body 10)))))
+    (if (or (not (eql status +connect-status-no-error+))
+            (< (length body) 10))
+        (%make-connect-response
+         :header header
+         :channel-id channel-id
+         :status status)
+        (%make-connect-response
+         :header header
+         :channel-id channel-id
+         :status status
+         :hpai (parse-hpai (subseq body 2 10))
+         :crd (parse-crd (subseq body 10))))))
 
 (defmethod to-byte-seq ((obj knx-connect-response))
   (concatenate '(vector octet)

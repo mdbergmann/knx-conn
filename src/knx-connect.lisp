@@ -105,6 +105,9 @@ succeed — i.e. when `send-write-request' reports a failure such as a negative
 `L_Data.con' or an ACK/response timeout. The default `0' preserves the original
 fire-once behaviour. `retry-backoff' is the delay in seconds slept between
 attempts (only applied between retries, not after the final attempt).
+When the tunnel connection is down (`knx-no-connection-error', or lost while
+retrying), remaining retries are skipped and the error is returned immediately —
+recovery is the responsibility of the reconnect handling above this layer.
 
 Note: this retries the *transport* delivery of the telegram onto the bus. It
 does not verify that the receiving device reached the intended state — that is a
@@ -115,13 +118,19 @@ read-back concern for the higher-level binding."
         (dpt (dpt:make-dpt dpt-type value)))
     (loop :for attempt :from 0 :to retries
           :do (multiple-value-bind (resp err)
-                  (send-write-request ga dpt :wait wait)
+                  (handler-case
+                      (send-write-request ga dpt :wait wait)
+                    (error (c) (values nil c)))
                 (cond
                   (resp (return t))
                   ((>= attempt retries)
                    (when (> retries 0)
                      (log:warn "write-value to ~a failed after ~a attempt(s): ~a"
                                group-address (1+ attempt) err))
+                   (return err))
+                  ((not (tunnel-connection-established-p))
+                   (log:warn "write-value to ~a failed (~a), connection down, not retrying."
+                             group-address err)
                    (return err))
                   (t
                    (log:info "write-value to ~a failed (~a), retrying (~a/~a)..."
@@ -173,7 +182,12 @@ In case of error, the future will be resolved with the error condition or `NIL' 
                 (%make-listener-fun requested-ga dpt-type))
           (add-tunnelling-request-listener listener-fun)
           ;; listener is cleaned up in macro
-          (send-read-request (make-group-address group-address)))
+          (handler-case
+              (send-read-request (make-group-address group-address))
+            (error (e)
+              (log:warn "request-value for ga ~a failed: ~a" group-address e)
+              (rem-tunnelling-request-listener listener-fun)
+              (fresolve e))))
         (result)
       (declare (ignore result))
       (log:debug "request-value completed"))))

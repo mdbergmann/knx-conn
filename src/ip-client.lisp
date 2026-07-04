@@ -61,13 +61,15 @@
     (assert conn nil "Not connected!")
     (let ((buf (make-array 256 :element-type 'octet)))
       (log:debug "Receiving...")
-      (handler-case 
-          (let ((received-obj
-                  (parse-root-knx-object
-                   (usocket:socket-receive conn buf 256))))
-            (log:debug "Received obj type: ~a" (type-of received-obj))
-            (log:trace"Received bytes: ~a" buf)
-            `(,received-obj nil))
+      (handler-case
+          (multiple-value-bind (recv-buf recv-len)
+              (usocket:socket-receive conn buf 256)
+            (let ((received-obj
+                    (parse-root-knx-object
+                     (subseq recv-buf 0 (or recv-len (length recv-buf))))))
+              (log:debug "Received obj type: ~a" (type-of received-obj))
+              (log:trace "Received bytes: ~a" buf)
+              `(,received-obj nil)))
         (error (e)
           (log:warn "Error: ~a" e)
           (when (loop :for v :across buf
