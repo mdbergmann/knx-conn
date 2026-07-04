@@ -37,6 +37,10 @@
 (defconstant +connect-status-err-conn-type+ #x22)
 (defconstant +connect-status-err-conn-option+ #x23)
 (defconstant +connect-status-err-no-more-conns+ #x24)
+(defconstant +connect-status-err-no-more-unique-conns+ #x25)
+(defconstant +connect-status-err-data-connection+ #x26)
+(defconstant +connect-status-err-knx-connection+ #x27)
+(defconstant +connect-status-err-tunneling-layer+ #x29)
 
 (defun connect-status-name (status)
   "Returns the KNXnet/IP spec name for a connect-response STATUS code."
@@ -46,6 +50,10 @@
     (#.+connect-status-err-conn-type+ "E_CONNECTION_TYPE")
     (#.+connect-status-err-conn-option+ "E_CONNECTION_OPTION")
     (#.+connect-status-err-no-more-conns+ "E_NO_MORE_CONNECTIONS")
+    (#.+connect-status-err-no-more-unique-conns+ "E_NO_MORE_UNIQUE_CONNECTIONS")
+    (#.+connect-status-err-data-connection+ "E_DATA_CONNECTION")
+    (#.+connect-status-err-knx-connection+ "E_KNX_CONNECTION")
+    (#.+connect-status-err-tunneling-layer+ "E_TUNNELING_LAYER")
     (t (format nil "UNKNOWN(#x~2,'0x)" status))))
 
 ;; -----------------------------

@@ -70,6 +70,10 @@ spec no data-endpoint HPAI and no CRD are included)."
   (is (string= "NO_ERROR" (connect-status-name #x00)))
   (is (string= "E_CONNECTION_TYPE" (connect-status-name #x22)))
   (is (string= "E_NO_MORE_CONNECTIONS" (connect-status-name #x24)))
+  (is (string= "E_NO_MORE_UNIQUE_CONNECTIONS" (connect-status-name #x25)))
+  (is (string= "E_DATA_CONNECTION" (connect-status-name #x26)))
+  (is (string= "E_KNX_CONNECTION" (connect-status-name #x27)))
+  (is (string= "E_TUNNELING_LAYER" (connect-status-name #x29)))
   (is (string= "UNKNOWN(#x42)" (connect-status-name #x42))))
 
 (test parse-root-knx-object--too-short-for-header
