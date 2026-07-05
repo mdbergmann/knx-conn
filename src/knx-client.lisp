@@ -193,6 +193,8 @@ thread. Errors signalled from the hook are caught and logged.")
   (setf *awaited-things*
         (make-hash-table :test #'equalp))
   (setf *pending-cons* nil)
+  (setf *channel-id* nil)
+  (setf *seq-counter* 0)
   t)
 
 (defun %assert-channel-id ()
@@ -228,6 +230,24 @@ thread. Errors signalled from the hook are caught and logged.")
       (wt:cancel scheduler *heartbeat-timer-sig*))
     (setf *heartbeat-timer-sig* nil)))
 
+(defun %send-disconnect-fire-and-forget (channel-id)
+  "Best-effort DISCONNECT_REQUEST for CHANNEL-ID without waiting for a
+response. Used to release the channel on the gateway when tearing down after a
+failure, or when discarding a late successful connect-response — otherwise the
+gateway keeps the tunnel slot allocated until its own connection-state timeout
+(~2 min), which can starve reconnect attempts (E_NO_MORE_UNIQUE_CONNECTIONS).
+Errors are logged only."
+  (handler-case
+      (when (and *async-handler* (ip-connected-p))
+        (log:info "Sending best-effort disconnect for channel-id: ~a" channel-id)
+        (! *async-handler*
+           `(:send . ,(make-disconnect-request
+                       channel-id
+                       ip-client:*local-host-and-port*))))
+    (error (c)
+      (log:debug "Best-effort disconnect for channel-id ~a failed: ~a"
+                 channel-id c))))
+
 (defun %trigger-disconnected (reason)
   "Tear down tunnel state after an unexpected disconnect and notify the hook.
 Idempotent: a no-op when `*channel-id*' is already `NIL', so heartbeat failure
@@ -237,6 +257,10 @@ and a follow-up gateway disconnect-request won't fire the hook twice."
     (handler-case (%stop-heartbeat)
       (error (c)
         (log:debug "Could not stop heartbeat during disconnect handling: ~a" c)))
+    ;; tell the gateway to free the channel; pointless when the gateway itself
+    ;; initiated the disconnect (it is already releasing it)
+    (unless (eq reason :gateway-disconnect-request)
+      (%send-disconnect-fire-and-forget *channel-id*))
     (setf *channel-id* nil)
     (setf *seq-counter* 0)
     (setf *pending-cons* nil)
@@ -353,6 +377,11 @@ If the connection is established successfully, the channel-id will be stored in 
     (values response err)))
 
 (defun close-tunnel-connection ()
+  "Send a DISCONNECT_REQUEST for the current channel and wait for the response.
+The local tunnel state is cleared in any case — the request went out, so the
+gateway will release the channel even if its response is lost or reports an
+error; keeping the local state would only leave a phantom 'established'
+connection behind."
   (%assert-channel-id)
   (%stop-heartbeat)
   (log:info "Closing tunnel connection...")
@@ -361,12 +390,16 @@ If the connection is established successfully, the channel-id will be stored in 
                       *channel-id*
                       ip-client:*local-host-and-port*)
                      'knx-disconnect-response)
-    (let ((status (disconnect-response-status response)))
-      (if (not (eql status 0))
-          (log:warn "Tunnel disconnection failed, status: ~a" status)
-          (progn
-            (log:info "Tunnel connection closed.")
-            (setf *channel-id* nil))))
+    (cond
+      ((null response)
+       (log:warn "No disconnect response (~a). Considering tunnel closed anyway." err))
+      ((not (eql (disconnect-response-status response) 0))
+       (log:warn "Tunnel disconnection failed, status: ~a. Considering tunnel closed anyway."
+                 (disconnect-response-status response)))
+      (t
+       (log:info "Tunnel connection closed.")))
+    (setf *channel-id* nil)
+    (setf *seq-counter* 0)
     (values response err)))
 
 (defun tunnel-connection-established-p ()
@@ -650,9 +683,26 @@ gateway's L_Data.con)."
          (setf received-type (cons received-type
                                    (tunnelling-seq-counter received))))
         (knx-disconnect-request
+         ;; confirm to the gateway (per spec), then tear down
+         (! self `(:send . ,(make-disconnect-response
+                             (disconnect-request-channel-id received)
+                             0)))
          (%trigger-disconnected :gateway-disconnect-request))
         (knx-connect-response
-         (log:debug "Received connect response: ~a" received)))
+         (log:debug "Received connect response: ~a" received)
+         ;; a successful connect-response nobody awaits (our wait already
+         ;; timed out) means the gateway allocated a channel that would never
+         ;; be used, heartbeated or released — free the slot right away.
+         ;; Only while we hold no tunnel at all: with a channel established
+         ;; (or just being adopted) a stray duplicate must not disconnect it.
+         (when (and (null (gethash received-type *awaited-things*))
+                    (eql (connect-response-status received)
+                         +connect-status-no-error+)
+                    (null *channel-id*))
+           (log:warn "Unawaited successful connect response (channel-id: ~a), sending disconnect to free the gateway slot."
+                     (connect-response-channel-id received))
+           (%send-disconnect-fire-and-forget
+            (connect-response-channel-id received)))))
       (if (null (gethash received-type *awaited-things*))
           (log:debug "Discarding received: ~a" received-type)
           (progn

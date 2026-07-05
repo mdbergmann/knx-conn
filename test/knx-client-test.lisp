@@ -165,8 +165,12 @@ In case of this the log must be checked."
                     (crd:crd-individual-address
                      (connect-response-crd response)))
                    "14.14.255"))))
-    
-    (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
+
+    ;; count connect-requests only: the mocked receive loop also delivers
+    ;; unawaited connect-responses, which trigger slot-freeing disconnects
+    (is (= 1 (count-if (lambda (inv)
+                         (typep (second inv) 'knx-connect-request))
+                       (invocations 'ip-client:ip-send-knx-data))))
     (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))))
 
 (test connect--ok--sets-channel-id-and-seq-counter
@@ -257,8 +261,12 @@ failing to parse) and must not establish the tunnel."
       (declare (ignore err))
       (is (= (connect-response-status resp)
              +connect-status-no-error+)))
-    
-    (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
+
+    ;; count connect-requests only: the mocked receive loop also delivers
+    ;; unawaited connect-responses, which trigger slot-freeing disconnects
+    (is (= 1 (count-if (lambda (inv)
+                         (typep (second inv) 'knx-connect-request))
+                       (invocations 'ip-client:ip-send-knx-data))))
     (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))
     (is-true (await-cond 1.5
                (>= (length (invocations 'knx-client:send-connection-state)) 1)))))
@@ -298,14 +306,50 @@ failing to parse) and must not establish the tunnel."
     (is (= 0 (length (invocations 'ip-client:ip-send-knx-data))))
     (is (= 0 (length (invocations 'ip-client:ip-receive-knx-data)))))))
 
+(test disconnect--no-response--clears-channel-id-anyway
+  "When the gateway doesn't answer the disconnect request, the local state is
+cleared anyway — the request went out, keeping a phantom channel-id would only
+fake an established connection."
+  (with-fixture env (nil nil)
+    (answer ip-client:ip-send-knx-data t)
+    (setf knx-client::*channel-id* 78)
+    (setf *response-wait-timeout-secs* 0)
+    (multiple-value-bind (response err)
+        (close-tunnel-connection)
+      (is (null response))
+      (is (typep err 'knx-response-timeout-error)))
+    (is (null knx-client::*channel-id*))
+    (is (= 0 knx-client::*seq-counter*))))
+
+(test disconnect--error-status--clears-channel-id-anyway
+  (with-mocks ()
+    (answer ip-client:ip-send-knx-data t)
+    (answer ip-client:ip-receive-knx-data
+      `(,(make-disconnect-response 78 #x21) nil))
+    (with-fixture env (nil t)
+      (setf knx-client::*channel-id* 78)
+      (multiple-value-bind (response err)
+          (close-tunnel-connection)
+        (is (null err))
+        (is (= #x21 (disconnect-response-status response))))
+      (is (null knx-client::*channel-id*)))))
+
+(test reset-client-vars--clears-channel-id-and-seq-counter
+  (let ((knx-client::*channel-id* 78)
+        (knx-client::*seq-counter* 5))
+    (reset-client-vars)
+    (is (null knx-client::*channel-id*))
+    (is (= 0 knx-client::*seq-counter*))))
+
 (test disconnect--received-request--closes-connection
   (with-mocks ()
     (let ((req (make-disconnect-request
                 78 (cons #(12 23 34 45) 3671))))
       (answer ip-client:ip-receive-knx-data `(,req nil))
 
-      (setf knx-client::*channel-id* 78)
       (with-fixture env (nil t)
+        ;; inside the fixture: reset-client-vars clears *channel-id*
+        (setf knx-client::*channel-id* 78)
         (is-true (await-cond 1.5
                    (null knx-client::*channel-id*))))
 
@@ -510,7 +554,16 @@ failing to parse) and must not establish the tunnel."
                               :wait :ack)
         (is (null ack))
         (is (typep err 'knx-response-timeout-error))
-        (is (= 3 (length (invocations 'ip-client:ip-send-knx-data))))))))
+        ;; 1 initial + 2 retries
+        (is (= 3 (count-if (lambda (inv)
+                             (typep (second inv) 'knx-tunnelling-request))
+                           (invocations 'ip-client:ip-send-knx-data))))
+        ;; retry exhaustion tears the tunnel down, which sends a best-effort
+        ;; disconnect (async via the handler actor) so the gateway frees the slot
+        (is-true (await-cond 1.5
+                   (= 1 (count-if (lambda (inv)
+                                    (typep (second inv) 'knx-disconnect-request))
+                                  (invocations 'ip-client:ip-send-knx-data)))))))))
 
 (test send-read-request--resolves-with-ack
   (with-fixture env (nil t)
@@ -785,13 +838,88 @@ hook can take over."
       (let ((req (make-disconnect-request 78 (cons #(12 23 34 45) 3671)))
             (reasons))
         (answer ip-client:ip-receive-knx-data `(,req nil))
-        (setf knx-client::*channel-id* 78)
         (setf knx-client:*on-disconnected*
               (lambda (r) (push r reasons)))
         (with-fixture env (nil t)
+          ;; inside the fixture: reset-client-vars clears *channel-id*
+          (setf knx-client::*channel-id* 78)
           (is-true (await-cond 1.5 (not (null reasons))))
           (is (equal reasons '(:gateway-disconnect-request)))
           (is (null knx-client::*channel-id*)))))))
+
+(test trigger-disconnected--sends-best-effort-disconnect
+  "Tearing down after a failure sends a fire-and-forget DISCONNECT_REQUEST so
+the gateway frees the tunnel slot instead of holding it until its own timeout."
+  (with-fixture with-disconnect-hook ()
+    (with-fixture env (nil nil)
+      (setf knx-client:*on-disconnected* nil)
+      (answer ip-client:ip-send-knx-data t)
+      (setf knx-client::*channel-id* 78)
+      (knx-client::%trigger-disconnected :heartbeat-failure)
+      (is-true (await-cond 1.5
+                 (let ((inv (first (invocations 'ip-client:ip-send-knx-data))))
+                   (and inv
+                        (typep (second inv) 'knx-disconnect-request)
+                        (= 78 (disconnect-request-channel-id (second inv)))))))
+      (is (null knx-client::*channel-id*)))))
+
+(test trigger-disconnected--gateway-initiated--sends-no-disconnect
+  "When the gateway itself initiated the disconnect there is nothing to free —
+no DISCONNECT_REQUEST goes out."
+  (with-fixture with-disconnect-hook ()
+    (with-fixture env (nil nil)
+      (setf knx-client:*on-disconnected* nil)
+      (answer ip-client:ip-send-knx-data t)
+      (setf knx-client::*channel-id* 78)
+      (knx-client::%trigger-disconnected :gateway-disconnect-request)
+      (sleep 0.3)
+      (is (= 0 (length (invocations 'ip-client:ip-send-knx-data))))
+      (is (null knx-client::*channel-id*)))))
+
+(test disconnect-request--from-gateway--replies-disconnect-response
+  "The gateway's disconnect-request is confirmed with a disconnect-response
+(per spec) before tearing down."
+  (with-fixture with-disconnect-hook ()
+    (with-mocks ()
+      (let ((req (make-disconnect-request 78 (cons #(12 23 34 45) 3671))))
+        (answer ip-client:ip-receive-knx-data `(,req nil))
+        (answer ip-client:ip-send-knx-data t)
+        (setf knx-client:*on-disconnected* nil)
+        (with-fixture env (nil t)
+          (setf knx-client::*channel-id* 78)
+          (is-true (await-cond 1.5
+                     (find-if (lambda (inv)
+                                (typep (second inv) 'knx-disconnect-response))
+                              (invocations 'ip-client:ip-send-knx-data))))
+          (is (null knx-client::*channel-id*)))))))
+
+(test unawaited-connect-response--sends-disconnect-to-free-slot
+  "A successful connect-response arriving after our wait timed out allocated a
+channel we will never use — it must be released immediately."
+  (with-fixture env (nil nil)
+    (answer ip-client:ip-send-knx-data t)
+    (setf knx-client::*channel-id* nil)
+    (knx-client::%async-handler-knx-received
+     nil (list *test-connect-response--ok* nil))
+    (is-true (await-cond 1.5
+               (let ((inv (first (invocations 'ip-client:ip-send-knx-data))))
+                 (and inv
+                      (typep (second inv) 'knx-disconnect-request)
+                      (= 78 (disconnect-request-channel-id (second inv)))))))))
+
+(test awaited-connect-response--sends-no-disconnect
+  "A connect-response someone is waiting for is delivered, not released."
+  (with-fixture env (nil nil)
+    (answer ip-client:ip-send-knx-data t)
+    (setf knx-client::*channel-id* nil)
+    (setf (gethash 'knx-connect-response knx-client::*awaited-things*) 'awaiting)
+    (knx-client::%async-handler-knx-received
+     nil (list *test-connect-response--ok* nil))
+    (sleep 0.3)
+    (is (= 0 (length (invocations 'ip-client:ip-send-knx-data))))
+    ;; delivered into the awaited slot instead
+    (is (equal (list *test-connect-response--ok* nil)
+               (gethash 'knx-connect-response knx-client::*awaited-things*)))))
 
 (test on-heartbeat-complete--no-fire-on-success
   (with-fixture with-disconnect-hook ()
