@@ -1,5 +1,5 @@
 (defsystem "knx-conn"
-  :version "0.5.1"
+  :version "0.5.2"
   :author "Manfred Bergmann"
   :license "GNU GPL, version 3"
   :description "KNXnet/IP implementation in Common Lisp"
