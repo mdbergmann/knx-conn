@@ -222,6 +222,34 @@ In case of this the log must be checked."
     (is (= (length (invocations 'ip-client:ip-send-knx-data)) 1))
     (is (>= (length (invocations 'ip-client:ip-receive-knx-data)) 1))))
 
+(def-fixture with-connect-hook ()
+  (let ((orig-hook knx-client:*on-connected*))
+    (unwind-protect
+         (&body)
+      (setf knx-client:*on-connected* orig-hook))))
+
+(test connect--ok--fires-on-connected
+  (with-fixture with-connect-hook ()
+    (with-fixture env (nil t)
+      (answer ip-client:ip-send-knx-data t)
+      (answer ip-client:ip-receive-knx-data
+        `(,*test-connect-response--ok* nil))
+      (let ((calls 0))
+        (setf knx-client:*on-connected* (lambda () (incf calls)))
+        (establish-tunnel-connection nil)
+        (is (= 1 calls))))))
+
+(test connect--err--does-not-fire-on-connected
+  (with-fixture with-connect-hook ()
+    (with-fixture env (nil t)
+      (answer ip-client:ip-send-knx-data t)
+      (answer ip-client:ip-receive-knx-data
+        `(,*test-connect-response--err* nil))
+      (let ((calls 0))
+        (setf knx-client:*on-connected* (lambda () (incf calls)))
+        (establish-tunnel-connection nil)
+        (is (= 0 calls))))))
+
 (defparameter *test-connect-response--err-short*
   (parse-root-knx-object
    #(6 16 2 6 0 8 0 36))

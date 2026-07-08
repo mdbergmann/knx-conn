@@ -28,6 +28,7 @@
            #:*default-receive-knx-data-recur-delay-secs*
            #:*response-wait-timeout-secs*
            #:*group-address-dpt-mapping*
+           #:*on-connected*
            #:*on-disconnected*
            #:reset-client-vars
            ;; async handler
@@ -168,6 +169,10 @@ actor (serialized with `*awaited-things*'). Each entry is a list
 
 (defvar *heartbeat-timer-sig* nil
   "The signature of the heartbeat timer.")
+
+(defvar *on-connected* nil
+  "Optional 0-arity function, invoked on every successful tunnel connect
+(initial and reconnect). Should return quickly; errors are caught and logged.")
 
 (defvar *on-disconnected* nil
   "Optional 1-arity function, invoked when the tunnel connection is lost
@@ -373,7 +378,11 @@ If the connection is established successfully, the channel-id will be stored in 
               (setf *seq-counter* 0)
               (when enable-heartbeat
                 (log:info "Starting heartbeat...")
-                (%start-heartbeat))))))
+                (%start-heartbeat))
+              (when *on-connected*
+                (handler-case (funcall *on-connected*)
+                  (error (c)
+                    (log:warn "Error in *on-connected* hook: ~a" c))))))))
     (values response err)))
 
 (defun close-tunnel-connection ()
