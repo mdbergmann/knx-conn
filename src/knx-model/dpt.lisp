@@ -12,7 +12,9 @@
            #:dpt-byte-len
            #:dpt-supports-optimized-p
            #:named-value-sym-for-dpt-sym
+           #:dpt-sym-for-value-type
            #:dpt-value-type-p
+           #:dpt-1.x-value-type-p
            #:parse-to-dpt
            #:make-dpt
            ;; dpt1
@@ -38,6 +40,12 @@
            #:make-dpt11
            ;; value/dpt types
            #:dpt-1.001
+           #:dpt-1.002
+           #:dpt-1.003
+           #:dpt-1.007
+           #:dpt-1.008
+           #:dpt-1.009
+           #:dpt-1.010
            #:dpt-5.001
            #:dpt-5.010
            #:dpt-9.001
@@ -51,14 +59,28 @@
 ;; value types ----------------------------
 ;; enforce the value types to be a symbol and only defined here.
 
+(defparameter *dpt-1.x-value-types*
+  '((:switch . dpt-1.001)                ; off / on
+    (:bool . dpt-1.002)                  ; false / true
+    (:enable . dpt-1.003)                ; disable / enable
+    (:step . dpt-1.007)                  ; decrease / increase
+    (:up-down . dpt-1.008)               ; up / down
+    (:open-close . dpt-1.009)            ; open / close
+    (:start-stop . dpt-1.010)            ; stop / start
+    )
+  "The 1-bit DPT-1.x value types.
+They all share the same wire encoding -- a single bit, `:off' = 0, `:on' = 1 --
+and differ only in the semantics the sub-number gives to the two states.
+See `make-dpt1'.")
+
 (defparameter *dpt-supported-value-types*
-  '((:switch . dpt-1.001)
-    (:scaling . dpt-5.001)
-    (:ucount . dpt-5.010)
-    (:temperature . dpt-9.001)
-    (:time-of-day . dpt-10.001)
-    (:date . dpt-11.001)
-    ))
+  (append *dpt-1.x-value-types*
+          '((:scaling . dpt-5.001)
+            (:ucount . dpt-5.010)
+            (:temperature . dpt-9.001)
+            (:time-of-day . dpt-10.001)
+            (:date . dpt-11.001)
+            )))
 
 (defun named-value-sym-for-dpt-sym (sym)
   "Returns the named value symbol, i.e. `:switch` for `dpt-1.001`."
@@ -71,6 +93,21 @@
   "Check if the `VALUE-TYPE' is supported."
   (find value-type *dpt-supported-value-types* :key #'cdr :test #'eq))
 
+(defun dpt-sym-for-value-type (value-type)
+  "Returns the DPT symbol for `VALUE-TYPE'.
+`VALUE-TYPE' is either the DPT symbol itself, i.e. `dpt-1.008', or its named
+alias, i.e. `:up-down'. Returns `NIL' if the type is not supported."
+  (or (cdr (assoc value-type *dpt-supported-value-types* :test #'eq))
+      (when (dpt-value-type-p value-type)
+        value-type)))
+
+(defun dpt-1.x-value-type-p (value-type)
+  "Check if `VALUE-TYPE' denotes one of the 1-bit DPT-1.x types.
+Accepts both the DPT symbol and the named alias."
+  (and (find (dpt-sym-for-value-type value-type)
+             *dpt-1.x-value-types* :key #'cdr :test #'eq)
+       t))
+
 (defun value-type-string-to-symbol (value-type-str)
   "Convert the `VALUE-TYPE-STR', i.e. \"1.001\" to a symbol, i.e. `DPT-1.001'."
   (find-symbol (format nil "DPT-~a" value-type-str) :dpt))
@@ -78,6 +115,10 @@
 (deftype dpt-value-type ()
   "A type for the DPT value type."
   `(satisfies dpt-value-type-p))
+
+(deftype dpt-1.x-value-type ()
+  "A type for the 1-bit DPT-1.x value types."
+  `(satisfies dpt-1.x-value-type-p))
 
 ;; conditions ----------------------------
 
@@ -128,9 +169,9 @@ I.e. the value for switches, dimmers, temperature sensors, etc. are all encoded 
 
 (defun make-dpt (dpt-type value)
   "Converts `value' to `dpt' based on `dpt-type'.
-For `dpt:dpt-1.001 we require `T', or `NIL'."
+For the DPT-1.x types we require `T', or `NIL'."
   (cond
-    ((eq dpt-type 'dpt:dpt-1.001)
+    ((dpt-1.x-value-type-p dpt-type)
      (dpt:make-dpt1 dpt-type (if value :on :off)))
     ((or (eq dpt-type 'dpt:dpt-5.001)
          (eq dpt-type 'dpt:dpt-5.010))
@@ -156,7 +197,11 @@ Field Names |                             b |
 Encoding    |                             B |
             +---+---+---+---+---+---+---+---+
 Format:     1 bit (B<sub>1</sub>)
-Range:      b = {0 = off, 1 = on}"
+Range:      b = {0 = off, 1 = on}
+
+Covers all DPT-1.x sub-types (see `*dpt-1.x-value-types*'). The encoding is the
+same for all of them; the value is always `:off'/`:on' and the sub-number only
+says what those two states mean (i.e. up/down for 1.008)."
   (raw-value (error "Required value!") :type octet)
   (value (error "Required value!") :type (member :on :off)))
 
@@ -175,22 +220,38 @@ Range:      b = {0 = off, 1 = on}"
 (defmethod to-byte-seq ((dpt dpt1))
   (vector (dpt1-raw-value dpt)))
 
-(defmethod parse-to-dpt ((value-type (eql 'dpt-1.001)) byte-vec)
+(defun %parse-to-dpt1 (value-type byte-vec)
   (%assert-byte-vec value-type byte-vec 1)
   (let ((value (if (zerop (aref byte-vec 0))
                    :off
                    :on)))
     (make-dpt1 value-type value)))
 
+(defmacro %def-dpt1-parse-methods (&rest dpt-syms)
+  "Defines the `parse-to-dpt' methods for the given DPT-1.x types.
+All of them decode the same single bit, so they share `%parse-to-dpt1'."
+  `(progn
+     ,@(loop :for sym :in dpt-syms
+             :collect `(defmethod parse-to-dpt ((value-type (eql ',sym)) byte-vec)
+                         (%parse-to-dpt1 value-type byte-vec)))))
+
+(%def-dpt1-parse-methods dpt-1.001 dpt-1.002 dpt-1.003
+                         dpt-1.007 dpt-1.008 dpt-1.009 dpt-1.010)
+
 (defun make-dpt1 (value-sym value)
-  "supported `value-sym': `(or :switch 'dpt-1.001)` as switch with `:on` or `:off` values."
-  (ecase (named-value-sym-for-dpt-sym value-sym)
-    (:switch
-        (%make-dpt1 :value-type 'dpt-1.001
-                    :value value
-                    :raw-value (ecase value
-                                 (:on 1)
-                                 (:off 0))))))
+  "Makes a 1-bit DPT-1.x value.
+`VALUE-SYM' is either the DPT symbol, i.e. `dpt-1.001' or `dpt-1.008', or its
+named alias, i.e. `:switch' or `:up-down'; see `*dpt-1.x-value-types*'.
+`VALUE' is `:on' or `:off' for every sub-type -- the sub-number only carries the
+semantics, i.e. `:on' means 'down' for 1.008 and 'close' for 1.009."
+  (let ((dpt-sym (dpt-sym-for-value-type value-sym)))
+    (unless (dpt-1.x-value-type-p dpt-sym)
+      (error 'type-error :datum value-sym :expected-type 'dpt-1.x-value-type))
+    (%make-dpt1 :value-type dpt-sym
+                :value value
+                :raw-value (ecase value
+                             (:on 1)
+                             (:off 0)))))
 
 (defun dpt1-toggle (dpt)
   "Toggle the value of the DPT1: `:on` -> `:off` and vise versa."

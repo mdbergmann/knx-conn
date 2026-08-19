@@ -46,6 +46,69 @@
     (is (eq (dpt-value toggled) :off))))
 
 ;; ------------------------------------
+;; dpt-1.x (the other 1-bit sub-types)
+;; ------------------------------------
+
+(defparameter *all-dpt-1.x*
+  '(("1.001" . dpt-1.001)
+    ("1.002" . dpt-1.002)
+    ("1.003" . dpt-1.003)
+    ("1.007" . dpt-1.007)
+    ("1.008" . dpt-1.008)
+    ("1.009" . dpt-1.009)
+    ("1.010" . dpt-1.010)))
+
+(test dpt1-value-type-resolution
+  (is-true (dpt-1.x-value-type-p :up-down))
+  (is-true (dpt-1.x-value-type-p 'dpt-1.008))
+  (is-false (dpt-1.x-value-type-p 'dpt-5.001))
+  (is-false (dpt-1.x-value-type-p :unknown))
+  (is (eq 'dpt-1.008 (dpt-sym-for-value-type :up-down)))
+  (is (eq 'dpt-1.008 (dpt-sym-for-value-type 'dpt-1.008)))
+  (is (null (dpt-sym-for-value-type :unknown))))
+
+(test create-dpt1-all-1.x-sub-types
+  ;; all DPT-1.x share the 1-bit encoding but keep their own value-type
+  (loop :for (str . sym) :in *all-dpt-1.x*
+        :do (is (eq sym (value-type-string-to-symbol str))
+                "~a must resolve to a dpt symbol" str)
+            ;; :on -> 1
+            (let ((dpt (make-dpt1 sym :on)))
+              (is (eq (dpt-value-type dpt) sym))
+              (is (eq (dpt-value dpt) :on))
+              (is (= 1 (dpt-byte-len dpt)))
+              (is (equalp #(1) (to-byte-seq dpt))))
+            ;; :off -> 0
+            (let ((dpt (make-dpt1 sym :off)))
+              (is (eq (dpt-value-type dpt) sym))
+              (is (equalp #(0) (to-byte-seq dpt))))
+            ;; parse back, sub-type preserved
+            (let ((dpt (parse-to-dpt sym #(1))))
+              (is (eq (dpt-value dpt) :on))
+              (is (eq (dpt-value-type dpt) sym)))
+            (let ((dpt (parse-to-dpt sym #(0))))
+              (is (eq (dpt-value dpt) :off)))))
+
+(test create-dpt1-by-named-alias
+  (is (eq 'dpt-1.007 (dpt-value-type (make-dpt1 :step :on))))
+  (is (eq 'dpt-1.008 (dpt-value-type (make-dpt1 :up-down :on))))
+  (is (eq 'dpt-1.009 (dpt-value-type (make-dpt1 :open-close :on))))
+  (is (eq 'dpt-1.010 (dpt-value-type (make-dpt1 :start-stop :off)))))
+
+(test toggle-dpt1-keeps-sub-type
+  (let ((toggled (dpt1-toggle (make-dpt1 :up-down :on))))
+    (is (eq (dpt-value toggled) :off))
+    (is (eq (dpt-value-type toggled) 'dpt-1.008))))
+
+(test make-dpt--1.x-from-boolean
+  (let ((dpt (make-dpt 'dpt-1.008 t)))
+    (is (eq (dpt-value-type dpt) 'dpt-1.008))
+    (is (eq (dpt-value dpt) :on)))
+  (let ((dpt (make-dpt 'dpt-1.010 nil)))
+    (is (eq (dpt-value-type dpt) 'dpt-1.010))
+    (is (eq (dpt-value dpt) :off))))
+
+;; ------------------------------------
 ;; dpt-5.001
 ;; ------------------------------------
 
