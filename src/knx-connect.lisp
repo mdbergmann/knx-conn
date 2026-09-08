@@ -26,7 +26,6 @@
                     (:shared (:workers 2) ;; *async-handler*
                      :receiver (:workers 1) ;; reading IP (UDP) data
                      :notifier (:workers 1)  ;; for notifying listeners
-                     :sender (:workers 1) ;; sender queue with ack awaiting
                      :heartbeat (:workers 1) ;; doing the heartbeat
                      :read-request (:workers 1) ;; higher-level read-request (below)
                      ))))))

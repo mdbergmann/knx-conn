@@ -294,9 +294,13 @@ and a follow-up gateway disconnect-request won't fire the hook twice."
                           :on-complete-fun completed-fun)
         (tasks:task-start fun))))
 
-(defun %dosync (dispatcher fun)
-  (tasks:with-context ((act:context *async-handler*) dispatcher)
-    (tasks:task-yield fun)))
+(defvar *sender-lock* (bt2:make-lock :name "knx-sender")
+  "Serializes every request/response exchange with the gateway: `%send-receive'
+and the tunnelling unit of `%send-tunnel-request'. A plain lock held on the
+calling thread. The former `:sender' dispatcher round trip (`tasks:task-yield'
+on an ad-hoc task actor) could hand a waiting caller sento's raw `no-result'
+sentinel under contention, before the task had run at all: the request was
+never sent and the caller took the sentinel for a response.")
 
 ;; ---------------------------------
 ;; knx-ip protocol functions
@@ -314,19 +318,34 @@ and a follow-up gateway disconnect-request won't fire the hook twice."
                           ,(get-universal-time)
                           ,resp-wait-time))))
 
+(defun %%send-receive (req resp-type resp-wait-time)
+  "Send REQ and wait for the response of type RESP-TYPE (see
+`%async-handler-knx-wait'). Takes no lock: `%send-receive' is the serialized
+wrapper, this one is for callers that already hold `*sender-lock*' (the
+tunnelling retry loop). Returns `(cons response err)'."
+  ;; Ask to await the response *before* the request goes out. Both messages
+  ;; queue on the async-handler in this order, so the awaited entry exists by
+  ;; the time the datagram is sent, and a reply that comes back faster than
+  ;; the caller could register its wait is not discarded as unawaited (which
+  ;; cost a full ack timeout plus a resend).
+  (let ((resp-fut (%%receive-resp resp-type resp-wait-time)))
+    (%%send-req req)
+    (destructuring-bind (response err)
+        (or (fawait resp-fut
+                    :timeout (+ resp-wait-time 2) ;; we give some more space here
+                    :sleep-time .05)
+            (list nil
+                  (make-timeout-error "Timeout during awaiting a response (~a)!" resp-type)))
+      (cons response err))))
+
 (defun %send-receive (req resp-type &optional (resp-wait-time
                                                *response-wait-timeout-secs*))
-  "Send request and internally waits until response is received, which is then returned."
-  (%dosync :sender
-           (lambda ()
-             (%%send-req req)
-             (destructuring-bind (response err)
-                 (or (fawait (%%receive-resp resp-type resp-wait-time)
-                             :timeout (+ resp-wait-time 2) ;; we give some more space here
-                             :sleep-time .05)
-                     (list nil
-                           (make-timeout-error "Timeout during awaiting a response (~a)!" resp-type)))
-               (cons response err)))))
+  "Send request and internally waits until response is received, which is then returned.
+Serialized with `*sender-lock*'. Returns `(values response err)'."
+  (destructuring-bind (response . err)
+      (bt2:with-lock-held (*sender-lock*)
+        (%%send-receive req resp-type resp-wait-time))
+    (values response err)))
 
 (defun retrieve-descr-info ()
   "Retrieve the description information from the KNXnet/IP gateway. The response to this request will be received asynchronously.
@@ -508,60 +527,85 @@ TIMEOUT-SECS. Returns (values con-cemi err); on timeout, deregisters."
 ;; tunnelling-request functions
 ;; ---------------------------------
 
-(defun %send-tunnel-request (req &key (retries 2) (wait :ack))
-  "Sends given tunnel request and waits for the gateway response.
+(defun %%send-tunnel-request-with-retries (req retries ack-timeout)
+  "Send REQ and wait for its TUNNELLING_ACK, resending on ack timeout up to
+RETRIES times. Must be called with `*sender-lock*' held (see
+`%send-tunnel-request'). Returns `(cons ack err)'; a
+`knx-response-timeout-error' in ERR means every retry is used up."
+  (let ((recv-type (cons 'knx-tunnelling-ack
+                         (tunnelling-seq-counter req))))
+    (loop :for count :from 0
+          :do (destructuring-bind (resp . err)
+                  (%%send-receive req recv-type ack-timeout)
+                (unless (and err (typep err 'knx-response-timeout-error))
+                  (return (cons resp err)))
+                (log:warn "Received no ACK in time, resending request (try ~a)."
+                          (1+ count))
+                (when (>= count retries)
+                  (log:error
+                   "Retried sending request ~a times but no ACK for req: ~a"
+                   count req)
+                  (return (cons resp err)))))))
+
+(defun %send-tunnel-request (make-req-fn &key (retries 2) (wait :ack))
+  "Build a tunnelling request via MAKE-REQ-FN, a 1-arity function receiving
+the sequence counter, send it and wait for the gateway response.
 `wait' controls the blocking mode:
 - :none — fire-and-forget (no ack, no con wait).
 - :ack  — wait for the KNXnet/IP TUNNELING_ACK (legacy default).
 - :con  — additionally wait for the matching cEMI L_Data.con
           (Calimero's WaitForCon equivalent).
-Retries on ack timeout up to `retries' times."
-  (when (eq wait :none)
-    (%%send-req req)
-    (return-from %send-tunnel-request (values t nil)))
-  (let* ((req-cemi (tunnelling-request-cemi req))
-         (con-fut (when (eq wait :con)
-                    (%register-pending-con req-cemi)))
-         (recv-type (cons 'knx-tunnelling-ack
-                          (tunnelling-seq-counter req)))
-         (ack-timeout *tunnel-ack-wait-timeout-secs*))
-    (labels ((finish (resp err)
-               (when (and con-fut err)
-                 (%deregister-pending-con con-fut))
-               (values resp err))
-             (await-con ()
-               (%await-pending-con con-fut req-cemi
-                                   *con-wait-timeout-secs*))
-             (timeout-or-retry (count)
-               (multiple-value-bind (resp err)
-                   (%send-receive req recv-type ack-timeout)
-                 (cond
-                   ((and err (typep err 'knx-response-timeout-error))
-                    (log:warn "Received no ACK in time, resending request (try ~a)."
-                              (1+ count))
-                    (if (>= count retries)
-                        (progn
-                          (log:error
-                           "Retried sending request ~a times but no ACK for req: ~a"
-                           count req)
-                          ;; Gateway is silent on the data path while the
-                          ;; control path may still be alive (heartbeats
-                          ;; succeeding). Force a teardown so any
-                          ;; configured `*on-disconnected*` hook can
-                          ;; reconnect; otherwise the channel stays stuck.
-                          (%trigger-disconnected :tunnel-ack-failure)
-                          (finish resp err))
-                        (timeout-or-retry (1+ count))))
-                   ((not (null err))
-                    (log:error "Error waiting for ack: ~a (~a)" err (type-of err))
-                    (finish resp err))
-                   (t
-                    (log:debug "Result: ~a" resp)
-                    (if (eq wait :con)
-                        (multiple-value-bind (con-cemi con-err) (await-con)
-                          (finish con-cemi con-err))
-                        (finish resp err)))))))
-      (timeout-or-retry 0))))
+Retries on ack timeout up to `retries' times.
+
+Taking the sequence counter, sending, and awaiting the ack -- retries
+included -- run as one unit under `*sender-lock*', so there is exactly one
+outstanding tunnelling request at a time. KNXnet/IP tunnelling needs that:
+the gateway only ACKs the expected counter (and repeats the ACK of the
+previous one); anything older is dropped silently. Numbering a request
+outside that unit, or letting another request in between two retries,
+sends a request with a counter the gateway will never acknowledge, and its
+retries then merely delay the tunnel teardown.
+
+The L_Data.con wait (`:con') happens after the lock is released; it does
+not gate the next request. Signals `knx-no-connection-error' when the
+tunnel went down while waiting for the lock."
+  (let ((req nil)
+        (con-fut nil))
+    (destructuring-bind (resp . err)
+        (bt2:with-lock-held (*sender-lock*)
+          ;; the tunnel may have gone down while waiting for the lock
+          (%assert-channel-id)
+          (setf req (funcall make-req-fn (%next-seq-counter)))
+          (when (eq wait :con)
+            (setf con-fut (%register-pending-con
+                           (tunnelling-request-cemi req))))
+          (if (eq wait :none)
+              (progn
+                (%%send-req req)
+                (cons t nil))
+              (%%send-tunnel-request-with-retries
+               req retries *tunnel-ack-wait-timeout-secs*)))
+      (cond
+        ((typep err 'knx-response-timeout-error)
+         ;; Gateway is silent on the data path while the control path may
+         ;; still be alive (heartbeats succeeding). Force a teardown so any
+         ;; configured `*on-disconnected*` hook can reconnect; otherwise the
+         ;; channel stays stuck.
+         (%trigger-disconnected :tunnel-ack-failure)
+         (when con-fut
+           (%deregister-pending-con con-fut))
+         (values resp err))
+        (err
+         (log:error "Error waiting for ack: ~a (~a)" err (type-of err))
+         (when con-fut
+           (%deregister-pending-con con-fut))
+         (values resp err))
+        ((eq wait :con)
+         (%await-pending-con con-fut (tunnelling-request-cemi req)
+                             *con-wait-timeout-secs*))
+        (t
+         (log:debug "Result: ~a" resp)
+         (values resp err))))))
 
 (defun send-write-request (group-address dpt &key (wait :con))
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Write to the given `address:knx-group-address` with the given data point type to be set.
@@ -574,15 +618,17 @@ Retries on ack timeout up to `retries' times."
   (check-type group-address knx-group-address)
   (check-type dpt dpt)
   (%assert-channel-id)
-  (let ((req (make-tunnelling-request
-              :channel-id *channel-id*
-              :seq-counter (%next-seq-counter)
-              :cemi (make-default-cemi
-                     :message-code +cemi-mc-l_data.req+
-                     :dest-address group-address
-                     :apci (make-apci-gv-write)
-                     :dpt dpt))))
-    (%send-tunnel-request req :wait wait)))
+  (%send-tunnel-request
+   (lambda (seq-counter)
+     (make-tunnelling-request
+      :channel-id *channel-id*
+      :seq-counter seq-counter
+      :cemi (make-default-cemi
+             :message-code +cemi-mc-l_data.req+
+             :dest-address group-address
+             :apci (make-apci-gv-write)
+             :dpt dpt)))
+   :wait wait))
 
 (defun send-read-request (group-address &key (wait :ack))
   "Send a tunnelling-request as L-Data.Req with APCI Group-Value-Read.
@@ -592,15 +638,17 @@ itself is confirmed (`:ack' default, `:con' to also wait for the
 gateway's L_Data.con)."
   (check-type group-address knx-group-address)
   (%assert-channel-id)
-  (let ((req (make-tunnelling-request
-              :channel-id *channel-id*
-              :seq-counter (%next-seq-counter)
-              :cemi (make-default-cemi
-                     :message-code +cemi-mc-l_data.req+
-                     :dest-address group-address
-                     :apci (make-apci-gv-read)
-                     :dpt nil))))
-    (%send-tunnel-request req :wait wait)))
+  (%send-tunnel-request
+   (lambda (seq-counter)
+     (make-tunnelling-request
+      :channel-id *channel-id*
+      :seq-counter seq-counter
+      :cemi (make-default-cemi
+             :message-code +cemi-mc-l_data.req+
+             :dest-address group-address
+             :apci (make-apci-gv-read)
+             :dpt nil)))
+   :wait wait))
 
 ;; ---------------------------------
 ;; async-handler

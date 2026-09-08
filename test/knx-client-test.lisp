@@ -28,8 +28,7 @@
                       (:shared (:workers 2)
                        :receiver (:workers 1)
                        :notifier (:workers 1)
-                       :heartbeat (:workers 1)
-                       :sender (:workers 1))))))
+                       :heartbeat (:workers 1))))))
     (with-mocks ()
       (answer ip-client:ip-connect
         (progn
@@ -592,6 +591,105 @@ fake an established connection."
                    (= 1 (count-if (lambda (inv)
                                     (typep (second inv) 'knx-disconnect-request))
                                   (invocations 'ip-client:ip-send-knx-data)))))))))
+
+(test send-receive--awaits-response-before-sending
+  "The awaited entry must already exist when the datagram goes out: a reply
+   that arrives before the wait is registered is discarded as unawaited, and
+   the caller then runs into a needless timeout and resend."
+  (with-fixture env (nil nil)
+    (let ((awaited-at-send :unset))
+      (answer (ip-client:ip-send-knx-data _req)
+        (progn
+          (setf awaited-at-send
+                (gethash 'knx-descr-response knx-client::*awaited-things*))
+          ;; reply immediately, the way a gateway on the LAN does
+          (act:! *async-handler* `(:received . (,*test-descr-response* nil)))
+          t))
+      (multiple-value-bind (result err) (retrieve-descr-info)
+        (is (null err))
+        (is (typep result 'knx-descr-response)))
+      (is (eq 'knx-client::awaiting awaited-at-send)))))
+
+(test send-write-request--concurrent-callers--counters-in-send-order
+  "The sequence counter is taken inside the serialized sender section, so
+   whatever order the callers arrive in, requests leave with strictly
+   increasing counters: the gateway never sees a request numbered ahead of
+   one that is still outstanding."
+  (with-fixture env (nil t)
+    (setf *receive-knx-data-recur-delay-secs* .05)
+    (setf knx-client::*channel-id* 78)
+    (let ((lock (bt2:make-lock))
+          (sent-seqs nil)
+          (pending-ack nil))
+      (answer (ip-client:ip-send-knx-data req)
+        (progn
+          (when (typep req 'knx-tunnelling-request)
+            (bt2:with-lock-held (lock)
+              (push (tunnelling-seq-counter req) sent-seqs)
+              (setf pending-ack
+                    (make-tunnelling-ack-2 78 (tunnelling-seq-counter req)))))
+          t))
+      (answer ip-client:ip-receive-knx-data
+        (bt2:with-lock-held (lock)
+          (when pending-ack
+            (prog1 `(,pending-ack nil)
+              (setf pending-ack nil)))))
+      (let ((threads
+              (loop :repeat 8
+                    :collect (bt2:make-thread
+                              (lambda ()
+                                (send-write-request (make-group-address "0/4/10")
+                                                    (make-dpt1 :switch :on)
+                                                    :wait :ack))))))
+        (mapc #'bt2:join-thread threads))
+      (is (equal '(0 1 2 3 4 5 6 7) (reverse sent-seqs))))))
+
+(test send-write-request--retries-keep-the-sender--no-request-in-between
+  "While a request is being resent, no other request may go out: one sent
+   in between advances the gateway's expected counter and turns the remaining
+   resends into silently dropped stale packets."
+  (with-fixture env (nil t)
+    (setf *receive-knx-data-recur-delay-secs* .05)
+    (setf knx-client::*channel-id* 78)
+    (let ((lock (bt2:make-lock))
+          (sent nil) ; destination GAs in send order
+          (pending-ack nil))
+      (answer (ip-client:ip-send-knx-data req)
+        (progn
+          (when (typep req 'knx-tunnelling-request)
+            (let ((ga (address-string-rep
+                       (cemi-destination-addr (tunnelling-request-cemi req)))))
+              (bt2:with-lock-held (lock)
+                (push ga sent)
+                ;; the first GA is acked on its third send only, the second
+                ;; right away
+                (when (or (string= ga "0/4/11")
+                          (= 3 (count "0/4/10" sent :test #'string=)))
+                  (setf pending-ack
+                        (make-tunnelling-ack-2 78 (tunnelling-seq-counter req)))))))
+          t))
+      (answer ip-client:ip-receive-knx-data
+        (bt2:with-lock-held (lock)
+          (when pending-ack
+            (prog1 `(,pending-ack nil)
+              (setf pending-ack nil)))))
+      (let* ((first (bt2:make-thread
+                     (lambda ()
+                       (let ((knx-client::*tunnel-ack-wait-timeout-secs* 1))
+                         (send-write-request (make-group-address "0/4/10")
+                                             (make-dpt1 :switch :on)
+                                             :wait :ack)))))
+             (second (progn
+                       (sleep .3)
+                       (bt2:make-thread
+                        (lambda ()
+                          (send-write-request (make-group-address "0/4/11")
+                                              (make-dpt1 :switch :on)
+                                              :wait :ack))))))
+        (bt2:join-thread first)
+        (bt2:join-thread second))
+      ;; initial send + 2 resends of the first, only then the second
+      (is (equal '("0/4/10" "0/4/10" "0/4/10" "0/4/11") (reverse sent))))))
 
 (test send-read-request--resolves-with-ack
   (with-fixture env (nil t)
